@@ -29,8 +29,6 @@ function formatTime(time: string): string {
  * - Alternating days: "Monday, Wednesday, and Friday 9:00 AM to 5:00 PM, Tuesday and Thursday 10:00 AM to 6:00 PM"
  */
 function formatBusinessHours(businessHours: unknown): string {
-  console.log('Raw businessHours:', JSON.stringify(businessHours));
-  
   // Handle array format (direct periods array)
   let periods: Array<Record<string, unknown>> | undefined;
   if (Array.isArray(businessHours)) {
