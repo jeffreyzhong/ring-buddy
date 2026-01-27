@@ -28,8 +28,18 @@ function formatTime(time: string): string {
  * - Consecutive days grouped: "Monday through Wednesday 9:00 AM to 5:00 PM"
  * - Alternating days: "Monday, Wednesday, and Friday 9:00 AM to 5:00 PM, Tuesday and Thursday 10:00 AM to 6:00 PM"
  */
-function formatBusinessHours(businessHours: { periods?: Array<Record<string, unknown>> } | undefined): string {
-  if (!businessHours?.periods || businessHours.periods.length === 0) {
+function formatBusinessHours(businessHours: unknown): string {
+  console.log('Raw businessHours:', JSON.stringify(businessHours));
+  
+  // Handle array format (direct periods array)
+  let periods: Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(businessHours)) {
+    periods = businessHours;
+  } else if (businessHours && typeof businessHours === 'object') {
+    periods = (businessHours as { periods?: Array<Record<string, unknown>> }).periods;
+  }
+  
+  if (!periods || periods.length === 0) {
     return 'Hours not available';
   }
 
@@ -53,7 +63,7 @@ function formatBusinessHours(businessHours: { periods?: Array<Record<string, unk
   };
 
   // Sort periods by day order (handle both snake_case and camelCase)
-  const sortedPeriods = [...businessHours.periods].sort((a, b) => {
+  const sortedPeriods = [...periods].sort((a, b) => {
     const dayA = normalizeDay((a.day_of_week || a.dayOfWeek) as string);
     const dayB = normalizeDay((b.day_of_week || b.dayOfWeek) as string);
     return dayOrder.indexOf(dayA) - dayOrder.indexOf(dayB);
@@ -165,7 +175,7 @@ function formatAddress(address: Record<string, unknown> | undefined): string | u
  * Transform Square location to simplified LocationInfo (TTS-optimized)
  */
 function transformLocation(location: Record<string, unknown>): LocationInfo {
-  const businessHours = location.businessHours as { periods?: Array<Record<string, unknown>> } | undefined;
+  const businessHours = location.businessHours;
   const address = location.address as Record<string, unknown> | undefined;
   
   return {
