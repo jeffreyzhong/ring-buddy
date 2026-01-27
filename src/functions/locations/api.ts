@@ -33,28 +33,29 @@ function formatBusinessHours(businessHours: { periods?: Array<Record<string, unk
     return 'Hours not available';
   }
 
-  const dayOrder = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+  // Square API uses abbreviated day names (MON, TUE, etc.)
+  const dayOrder = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
   const dayNames: Record<string, string> = {
-    'MONDAY': 'Monday',
-    'TUESDAY': 'Tuesday', 
-    'WEDNESDAY': 'Wednesday',
-    'THURSDAY': 'Thursday',
-    'FRIDAY': 'Friday',
-    'SATURDAY': 'Saturday',
-    'SUNDAY': 'Sunday',
+    'MON': 'Monday',
+    'TUE': 'Tuesday', 
+    'WED': 'Wednesday',
+    'THU': 'Thursday',
+    'FRI': 'Friday',
+    'SAT': 'Saturday',
+    'SUN': 'Sunday',
   };
 
-  // Sort periods by day order
+  // Sort periods by day order (Square uses snake_case: day_of_week)
   const sortedPeriods = [...businessHours.periods].sort(
-    (a, b) => dayOrder.indexOf(a.dayOfWeek as string) - dayOrder.indexOf(b.dayOfWeek as string)
+    (a, b) => dayOrder.indexOf(a.day_of_week as string) - dayOrder.indexOf(b.day_of_week as string)
   );
 
-  // Create a map of day -> hours string
+  // Create a map of day -> hours string (Square uses snake_case: start_local_time, end_local_time)
   const dayHours: Record<string, string> = {};
   for (const period of sortedPeriods) {
-    const day = period.dayOfWeek as string;
-    const start = formatTime(period.startLocalTime as string);
-    const end = formatTime(period.endLocalTime as string);
+    const day = period.day_of_week as string;
+    const start = formatTime(period.start_local_time as string);
+    const end = formatTime(period.end_local_time as string);
     dayHours[day] = `${start} to ${end}`;
   }
 
@@ -62,7 +63,7 @@ function formatBusinessHours(businessHours: { periods?: Array<Record<string, unk
   const uniqueHours = [...new Set(Object.values(dayHours))];
 
   // Case 1: All 7 days have the same hours
-  if (uniqueHours.length === 1 && sortedPeriods.length === 7) {
+  if (uniqueHours.length === 1 && Object.keys(dayHours).length === 7) {
     return `Open daily from ${uniqueHours[0]}`;
   }
 
