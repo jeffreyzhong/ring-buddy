@@ -21,6 +21,12 @@ function formatTime(time: string): string {
 
 /**
  * Format business hours into human-readable format for TTS
+ * 
+ * Handles various cases:
+ * - All days same hours: "Open daily from 9:00 AM to 5:00 PM"
+ * - Weekdays same, weekend different: "Monday through Friday 9:00 AM to 5:00 PM, Saturday and Sunday 10:00 AM to 4:00 PM"
+ * - Consecutive days grouped: "Monday through Wednesday 9:00 AM to 5:00 PM, Thursday through Saturday 10:00 AM to 6:00 PM"
+ * - Individual days when needed: "Monday 9:00 AM to 5:00 PM, Tuesday 10:00 AM to 6:00 PM"
  */
 function formatBusinessHours(businessHours: { periods?: Array<Record<string, unknown>> } | undefined): string {
   if (!businessHours?.periods || businessHours.periods.length === 0) {
@@ -28,18 +34,74 @@ function formatBusinessHours(businessHours: { periods?: Array<Record<string, unk
   }
 
   const dayOrder = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+  const dayNames: Record<string, string> = {
+    'MONDAY': 'Monday',
+    'TUESDAY': 'Tuesday', 
+    'WEDNESDAY': 'Wednesday',
+    'THURSDAY': 'Thursday',
+    'FRIDAY': 'Friday',
+    'SATURDAY': 'Saturday',
+    'SUNDAY': 'Sunday',
+  };
+
+  // Sort periods by day order
   const sortedPeriods = [...businessHours.periods].sort(
     (a, b) => dayOrder.indexOf(a.dayOfWeek as string) - dayOrder.indexOf(b.dayOfWeek as string)
   );
 
-  return sortedPeriods
-    .map((period) => {
-      const day = (period.dayOfWeek as string).charAt(0) + (period.dayOfWeek as string).slice(1).toLowerCase();
-      const start = formatTime(period.startLocalTime as string);
-      const end = formatTime(period.endLocalTime as string);
-      return `${day}: ${start} to ${end}`;
-    })
-    .join(', ');
+  // Create a map of day -> hours string
+  const dayHours: Record<string, string> = {};
+  for (const period of sortedPeriods) {
+    const day = period.dayOfWeek as string;
+    const start = formatTime(period.startLocalTime as string);
+    const end = formatTime(period.endLocalTime as string);
+    dayHours[day] = `${start} to ${end}`;
+  }
+
+  // Get unique hour patterns
+  const uniqueHours = [...new Set(Object.values(dayHours))];
+
+  // Case 1: All days have the same hours
+  if (uniqueHours.length === 1 && sortedPeriods.length === 7) {
+    return `Open daily from ${uniqueHours[0]}`;
+  }
+
+  // Group consecutive days with the same hours
+  type DayGroup = { days: string[]; hours: string };
+  const groups: DayGroup[] = [];
+  
+  for (const day of dayOrder) {
+    const hours = dayHours[day];
+    if (!hours) continue; // Skip closed days
+    
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.hours === hours) {
+      // Same hours as previous day, add to group
+      lastGroup.days.push(day);
+    } else {
+      // Different hours, start new group
+      groups.push({ days: [day], hours });
+    }
+  }
+
+  // Format each group
+  const formatDayRange = (days: string[]): string => {
+    if (days.length === 1) {
+      return dayNames[days[0]];
+    } else if (days.length === 2) {
+      return `${dayNames[days[0]]} and ${dayNames[days[1]]}`;
+    } else {
+      return `${dayNames[days[0]]} through ${dayNames[days[days.length - 1]]}`;
+    }
+  };
+
+  // Format output
+  const parts = groups.map((group) => {
+    const dayRange = formatDayRange(group.days);
+    return `${dayRange} ${group.hours}`;
+  });
+
+  return parts.join(', ');
 }
 
 /**
