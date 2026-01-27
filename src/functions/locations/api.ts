@@ -25,8 +25,8 @@ function formatTime(time: string): string {
  * Handles various cases:
  * - All days same hours: "Open daily from 9:00 AM to 5:00 PM"
  * - Weekdays same, weekend different: "Monday through Friday 9:00 AM to 5:00 PM, Saturday and Sunday 10:00 AM to 4:00 PM"
- * - Consecutive days grouped: "Monday through Wednesday 9:00 AM to 5:00 PM, Thursday through Saturday 10:00 AM to 6:00 PM"
- * - Individual days when needed: "Monday 9:00 AM to 5:00 PM, Tuesday 10:00 AM to 6:00 PM"
+ * - Consecutive days grouped: "Monday through Wednesday 9:00 AM to 5:00 PM"
+ * - Alternating days: "Monday, Wednesday, and Friday 9:00 AM to 5:00 PM, Tuesday and Thursday 10:00 AM to 6:00 PM"
  */
 function formatBusinessHours(businessHours: { periods?: Array<Record<string, unknown>> } | undefined): string {
   if (!businessHours?.periods || businessHours.periods.length === 0) {
@@ -61,44 +61,62 @@ function formatBusinessHours(businessHours: { periods?: Array<Record<string, unk
   // Get unique hour patterns
   const uniqueHours = [...new Set(Object.values(dayHours))];
 
-  // Case 1: All days have the same hours
+  // Case 1: All 7 days have the same hours
   if (uniqueHours.length === 1 && sortedPeriods.length === 7) {
     return `Open daily from ${uniqueHours[0]}`;
   }
 
-  // Group consecutive days with the same hours
-  type DayGroup = { days: string[]; hours: string };
-  const groups: DayGroup[] = [];
-  
+  // Group days by their hours (regardless of whether consecutive)
+  const hoursToDays: Map<string, string[]> = new Map();
   for (const day of dayOrder) {
     const hours = dayHours[day];
     if (!hours) continue; // Skip closed days
     
-    const lastGroup = groups[groups.length - 1];
-    if (lastGroup && lastGroup.hours === hours) {
-      // Same hours as previous day, add to group
-      lastGroup.days.push(day);
-    } else {
-      // Different hours, start new group
-      groups.push({ days: [day], hours });
+    if (!hoursToDays.has(hours)) {
+      hoursToDays.set(hours, []);
     }
+    hoursToDays.get(hours)!.push(day);
   }
 
-  // Format each group
-  const formatDayRange = (days: string[]): string => {
+  // Check if days in a group are consecutive
+  const areConsecutive = (days: string[]): boolean => {
+    if (days.length <= 1) return true;
+    for (let i = 1; i < days.length; i++) {
+      const prevIndex = dayOrder.indexOf(days[i - 1]);
+      const currIndex = dayOrder.indexOf(days[i]);
+      if (currIndex !== prevIndex + 1) return false;
+    }
+    return true;
+  };
+
+  // Format a list of days
+  const formatDayList = (days: string[]): string => {
     if (days.length === 1) {
       return dayNames[days[0]];
     } else if (days.length === 2) {
       return `${dayNames[days[0]]} and ${dayNames[days[1]]}`;
-    } else {
+    } else if (areConsecutive(days)) {
+      // Consecutive days: "Monday through Friday"
       return `${dayNames[days[0]]} through ${dayNames[days[days.length - 1]]}`;
+    } else {
+      // Non-consecutive days: "Monday, Wednesday, and Friday"
+      const dayNamesList = days.map(d => dayNames[d]);
+      const lastDay = dayNamesList.pop();
+      return `${dayNamesList.join(', ')}, and ${lastDay}`;
     }
   };
 
-  // Format output
-  const parts = groups.map((group) => {
-    const dayRange = formatDayRange(group.days);
-    return `${dayRange} ${group.hours}`;
+  // Format output - maintain order by first day in each group
+  const groups = Array.from(hoursToDays.entries())
+    .sort((a, b) => {
+      const firstDayA = dayOrder.indexOf(a[1][0]);
+      const firstDayB = dayOrder.indexOf(b[1][0]);
+      return firstDayA - firstDayB;
+    });
+
+  const parts = groups.map(([hours, days]) => {
+    const dayList = formatDayList(days);
+    return `${dayList} ${hours}`;
   });
 
   return parts.join(', ');
