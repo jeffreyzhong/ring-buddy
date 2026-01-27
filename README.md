@@ -128,6 +128,221 @@ bun run typecheck
 | `/health` | GET | Health check endpoint |
 | `/` | GET | API documentation |
 
+## Example cURL Commands
+
+Replace `BASE_URL` with your deployment URL (e.g., `https://ring-buddy-production.up.railway.app`).
+
+### Health Check
+
+```bash
+# Check if the API is healthy
+curl $BASE_URL/health
+
+# Get API documentation
+curl $BASE_URL/
+```
+
+### Locations
+
+```bash
+# List all locations
+curl -X POST $BASE_URL/locations/list \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Get specific location details
+curl -X POST $BASE_URL/locations/get \
+  -H "Content-Type: application/json" \
+  -d '{"location_id": "LTDCH3ZYBBS4C"}'
+```
+
+### Services
+
+```bash
+# List all bookable services
+curl -X POST $BASE_URL/services/list \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# List services for a specific location
+curl -X POST $BASE_URL/services/list \
+  -H "Content-Type: application/json" \
+  -d '{"location_id": "LTDCH3ZYBBS4C"}'
+
+# Get specific service details
+curl -X POST $BASE_URL/services/get \
+  -H "Content-Type: application/json" \
+  -d '{"service_id": "ABCDEFGHIJKLMNOP"}'
+```
+
+### Staff
+
+```bash
+# List all bookable staff members
+curl -X POST $BASE_URL/staff/list \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# List staff for a specific location
+curl -X POST $BASE_URL/staff/list \
+  -H "Content-Type: application/json" \
+  -d '{"location_id": "LTDCH3ZYBBS4C"}'
+
+# Get specific staff member details
+curl -X POST $BASE_URL/staff/get \
+  -H "Content-Type: application/json" \
+  -d '{"team_member_id": "TMnVnspoQmdixD23"}'
+```
+
+### Customers
+
+```bash
+# Lookup customer by phone number (caller ID)
+curl -X POST $BASE_URL/customers/lookup \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number": "+12065551234"}'
+
+# Search customers by phone
+curl -X POST $BASE_URL/customers/search \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number": "206555"}'
+
+# Search customers by email
+curl -X POST $BASE_URL/customers/search \
+  -H "Content-Type: application/json" \
+  -d '{"email": "john@example.com"}'
+
+# Search customers by name
+curl -X POST $BASE_URL/customers/search \
+  -H "Content-Type: application/json" \
+  -d '{"name": "John", "phone_number": "555"}'
+
+# Create a new customer
+curl -X POST $BASE_URL/customers/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "given_name": "John",
+    "family_name": "Doe",
+    "email": "john.doe@example.com",
+    "phone_number": "+12065551234",
+    "note": "Prefers morning appointments"
+  }'
+
+# Get all bookings for a customer
+curl -X POST $BASE_URL/customers/bookings \
+  -H "Content-Type: application/json" \
+  -d '{"customer_id": "CUSTOMER_ID_HERE"}'
+```
+
+### Availability
+
+```bash
+# Search for available time slots
+curl -X POST $BASE_URL/availability/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "location_id": "LTDCH3ZYBBS4C",
+    "service_variation_id": "FP2MBDGNMUBT6ZFHUR2VVY5R",
+    "start_date": "2026-02-01",
+    "end_date": "2026-02-07"
+  }'
+
+# Search with specific staff member
+curl -X POST $BASE_URL/availability/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "location_id": "LTDCH3ZYBBS4C",
+    "service_variation_id": "FP2MBDGNMUBT6ZFHUR2VVY5R",
+    "start_date": "2026-02-01",
+    "end_date": "2026-02-07",
+    "staff_member_ids": ["TMnVnspoQmdixD23"]
+  }'
+```
+
+### Bookings
+
+```bash
+# Create a new booking
+curl -X POST $BASE_URL/bookings/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "location_id": "LTDCH3ZYBBS4C",
+    "service_variation_id": "FP2MBDGNMUBT6ZFHUR2VVY5R",
+    "start_at": "2026-02-01T14:00:00Z",
+    "customer_id": "CUSTOMER_ID_HERE",
+    "team_member_id": "TMnVnspoQmdixD23",
+    "customer_note": "First time customer"
+  }'
+
+# Get booking details
+curl -X POST $BASE_URL/bookings/get \
+  -H "Content-Type: application/json" \
+  -d '{"booking_id": "BOOKING_ID_HERE"}'
+
+# Update a booking (change time or note)
+curl -X POST $BASE_URL/bookings/update \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_id": "BOOKING_ID_HERE",
+    "booking_version": 0,
+    "start_at": "2026-02-01T15:00:00Z",
+    "customer_note": "Rescheduled to 3pm"
+  }'
+
+# Cancel a booking
+curl -X POST $BASE_URL/bookings/cancel \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_id": "BOOKING_ID_HERE",
+    "booking_version": 1,
+    "cancel_reason": "Customer requested cancellation"
+  }'
+
+# List all bookings
+curl -X POST $BASE_URL/bookings/list \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# List bookings with filters
+curl -X POST $BASE_URL/bookings/list \
+  -H "Content-Type: application/json" \
+  -d '{
+    "location_id": "LTDCH3ZYBBS4C",
+    "start_at_min": "2026-02-01T00:00:00Z",
+    "start_at_max": "2026-02-28T23:59:59Z",
+    "limit": 10
+  }'
+```
+
+### Example Endpoint (for testing)
+
+```bash
+# Echo a message
+curl -X POST $BASE_URL/example \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello, Ring Buddy!"}'
+
+# With arguments wrapper (voice agent format)
+curl -X POST $BASE_URL/example \
+  -H "Content-Type: application/json" \
+  -d '{"arguments": {"message": "Hello from voice agent!"}}'
+```
+
+## Testing
+
+Run the integration test suite:
+
+```bash
+# Run all tests against production
+bun test
+
+# Run tests in watch mode
+bun test --watch
+
+# Run tests against a different URL
+API_BASE_URL=http://localhost:3000 bun test
+```
+
 ## Deploying to Railway
 
 ### 1. Push to GitHub
