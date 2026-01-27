@@ -7,9 +7,7 @@
  */
 
 import "dotenv/config";
-import { PrismaClient } from "../src/generated/prisma";
-
-const prisma = new PrismaClient();
+import { prisma } from "../src/lib/prisma";
 
 async function listMerchants() {
   const merchants = await prisma.merchants.findMany({

@@ -10,10 +10,8 @@
  */
 
 import "dotenv/config";
-import { PrismaClient } from "../src/generated/prisma";
+import { prisma } from "../src/lib/prisma";
 import { encrypt, verifyEncryptionConfig } from "../src/lib/encryption";
-
-const prisma = new PrismaClient();
 
 interface MerchantInput {
   merchantId: string;
