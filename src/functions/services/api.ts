@@ -26,31 +26,40 @@ function transformService(
   const serviceName = (itemData?.name as string | undefined) || 'Unknown Service';
   const variationName = variationData?.name as string | undefined;
   
+  // Format duration for speech (e.g., "60 minutes", "1 hour 30 minutes")
+  let duration: string | undefined;
+  if (variationData?.serviceDuration) {
+    const minutes = Number(variationData.serviceDuration) / 60000;
+    if (minutes >= 60) {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      duration = remainingMinutes > 0 
+        ? `${hours} hour${hours > 1 ? 's' : ''} ${remainingMinutes} minutes`
+        : `${hours} hour${hours > 1 ? 's' : ''}`;
+    } else {
+      duration = `${minutes} minutes`;
+    }
+  }
+  
+  // Format price for speech (e.g., "$120.00")
+  let price: string | undefined;
+  if (priceMoney) {
+    const amount = Number(priceMoney.amount) / 100;
+    price = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: priceMoney.currency as string,
+    }).format(amount);
+  }
+  
   return {
     service_id: item.id as string,
     variation_id: variation.id as string,
     service_name: serviceName,
     variation_name: variationName,
     description: itemData?.description as string | undefined,
-    duration_minutes: variationData?.serviceDuration 
-      ? Number(variationData.serviceDuration) / 60000 // Convert from milliseconds
-      : undefined,
-    price: priceMoney ? {
-      amount: Number(priceMoney.amount) / 100, // Convert from cents
-      currency: priceMoney.currency as string,
-    } : undefined,
+    duration,
+    price,
   };
-}
-
-/**
- * Format price for voice agent
- */
-function formatPrice(price?: ServiceInfo['price']): string | undefined {
-  if (!price) return undefined;
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: price.currency,
-  }).format(price.amount);
 }
 
 /**
@@ -73,7 +82,7 @@ app.post('/list', async (c) => {
     });
 
     const items = response.objects || [];
-    const services: Array<ServiceInfo & { formatted_price?: string; formatted_duration?: string }> = [];
+    const services: ServiceInfo[] = [];
 
     for (const item of items) {
       const itemRecord = item as unknown as Record<string, unknown>;
@@ -96,14 +105,7 @@ app.post('/list', async (c) => {
           if (locationOverride?.soldOut === true) continue;
         }
 
-        const service = transformService(itemRecord, variation);
-        services.push({
-          ...service,
-          formatted_price: formatPrice(service.price),
-          formatted_duration: service.duration_minutes 
-            ? `${service.duration_minutes} minutes` 
-            : undefined,
-        });
+        services.push(transformService(itemRecord, variation));
       }
     }
 
@@ -149,15 +151,7 @@ app.post('/get', async (c) => {
     // Return the first variation (or we could return all)
     const service = transformService(item, variations[0]);
 
-    return c.json(successResponse({
-      service: {
-        ...service,
-        formatted_price: formatPrice(service.price),
-        formatted_duration: service.duration_minutes 
-          ? `${service.duration_minutes} minutes` 
-          : undefined,
-      },
-    }));
+    return c.json(successResponse({ service }));
   } catch (error) {
     console.error('Service get error:', error);
     return c.json(errorResponse(handleSquareError(error)), 500);

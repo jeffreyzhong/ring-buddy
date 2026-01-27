@@ -255,11 +255,10 @@ export interface ServiceInfo {
   service_name: string;
   variation_name?: string;
   description?: string;
-  duration_minutes?: number;
-  price?: {
-    amount: number;
-    currency: string;
-  };
+  /** Human-readable duration, e.g., "60 minutes" */
+  duration?: string;
+  /** Human-readable price, e.g., "$120.00" */
+  price?: string;
 }
 
 /** Simplified staff info for voice agent */
