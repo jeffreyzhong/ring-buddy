@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { verifyWebhook } from '@clerk/backend/webhooks';
+import { createClerkClient } from '@clerk/backend';
 import { prisma } from '../../lib/prisma';
 import { errorResponse, successResponse } from '../../types';
 
@@ -36,39 +37,15 @@ app.post('/clerk', async (c) => {
 
     // Handle user.created event
     if (evt.type === 'user.created') {
-      const userData = evt.data;
+      const webhookUserData = evt.data;
       
-      // Extract user information
-      const clerkUserId = userData.id;
+      // Extract user ID from webhook payload
+      const clerkUserId = webhookUserData.id;
       
       if (!clerkUserId) {
         console.error('Missing user ID in webhook payload');
         return c.json(errorResponse('Invalid webhook payload: missing user ID'), 400);
       }
-      
-      // Get primary email address
-      // Try to find email by primary_email_address_id first, then fall back to first verified email
-      let primaryEmail = userData.email_addresses?.find(
-        (email: { id: string; email_address: string; verification?: { status: string } }) =>
-          email.id === userData.primary_email_address_id
-      )?.email_address;
-
-      // Fallback to first verified email if primary_email_address_id doesn't match
-      if (!primaryEmail && userData.email_addresses?.length) {
-        primaryEmail = userData.email_addresses.find(
-          (email: { email_address: string; verification?: { status: string } }) =>
-            email.verification?.status === 'verified'
-        )?.email_address || userData.email_addresses[0]?.email_address;
-      }
-
-      if (!primaryEmail) {
-        console.error('No email found for user:', clerkUserId);
-        return c.json(errorResponse('User has no email address'), 400);
-      }
-
-      // Extract first and last name
-      const firstName = userData.first_name || '';
-      const lastName = userData.last_name || '';
 
       // Check if user already exists (idempotency)
       const existingUser = await prisma.users.findUnique({
@@ -86,6 +63,50 @@ app.post('/clerk', async (c) => {
         );
       }
 
+      // Fetch full user data from Clerk API to get organization memberships
+      // The webhook payload doesn't include organization information
+      const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+      if (!clerkSecretKey) {
+        console.error('CLERK_SECRET_KEY environment variable is not set');
+        return c.json(errorResponse('Clerk API configuration error'), 500);
+      }
+
+      const clerkClient = createClerkClient({ secretKey: clerkSecretKey });
+      let fullUserData;
+      try {
+        fullUserData = await clerkClient.users.getUser(clerkUserId);
+      } catch (err) {
+        console.error('Failed to fetch user from Clerk API:', err);
+        return c.json(errorResponse('Failed to retrieve user data from Clerk'), 500);
+      }
+      
+      // Get primary email address
+      // Try to find email by primary_email_address_id first, then fall back to first verified email
+      let primaryEmail = fullUserData.emailAddresses?.find(
+        (email) => email.id === fullUserData.primaryEmailAddressId
+      )?.emailAddress;
+
+      // Fallback to first verified email if primary_email_address_id doesn't match
+      if (!primaryEmail && fullUserData.emailAddresses?.length) {
+        primaryEmail = fullUserData.emailAddresses.find(
+          (email) => email.verification?.status === 'verified'
+        )?.emailAddress || fullUserData.emailAddresses[0]?.emailAddress;
+      }
+
+      if (!primaryEmail) {
+        console.error('No email found for user:', clerkUserId);
+        return c.json(errorResponse('User has no email address'), 400);
+      }
+
+      // Extract first and last name
+      const firstName = fullUserData.firstName || '';
+      const lastName = fullUserData.lastName || '';
+
+      // Extract organization ID from organization_memberships if available
+      // Users can belong to multiple organizations, so we take the first one
+      // Access via raw JSON since organization_memberships is not a direct property on User class
+      const organizationId = fullUserData.raw?.organization_memberships?.[0]?.organization?.id || null;
+
       // Create new user in database
       const newUser = await prisma.users.create({
         data: {
@@ -93,8 +114,8 @@ app.post('/clerk', async (c) => {
           email: primaryEmail,
           first_name: firstName,
           last_name: lastName,
-          // clerk_organization_id is optional, set to empty string if not provided
-          clerk_organization_id: userData.organization_id || '',
+          // clerk_organization_id is optional, set to null if not provided
+          clerk_organization_id: organizationId,
         },
       });
 

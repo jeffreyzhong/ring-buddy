@@ -78,13 +78,19 @@ To sync Clerk users to your database, configure the webhook in Clerk Dashboard:
 1. **Webhook URL**: `https://ring-buddy-production.up.railway.app/webhooks/clerk`
 2. **Events**: Subscribe to `user.created`
 3. **Signing Secret**: Copy the webhook signing secret from Clerk Dashboard
-4. **Environment Variable**: Add `CLERK_WEBHOOK_SIGNING_SECRET` to your Railway environment variables
+4. **Environment Variables**: Add the following to your Railway environment variables:
+   - `CLERK_WEBHOOK_SIGNING_SECRET` - Webhook signing secret (from Clerk Dashboard → Webhooks)
+   - `CLERK_SECRET_KEY` - Clerk secret key (from Clerk Dashboard → API Keys) - required to fetch full user data including organization memberships
 
-When a new user is created in Clerk, the webhook will automatically create a corresponding user record in your Supabase `users` table with:
-- `clerk_user_id`
-- `email`
-- `first_name`
-- `last_name`
+When a new user is created in Clerk, the webhook will:
+1. Verify the webhook signature
+2. Fetch the full user data from Clerk's API (to get organization memberships)
+3. Automatically create a corresponding user record in your Supabase `users` table with:
+   - `clerk_user_id`
+   - `email`
+   - `first_name`
+   - `last_name`
+   - `clerk_organization_id` (if the user belongs to an organization)
 
 ### Development
 
@@ -522,6 +528,7 @@ In Railway's dashboard, add the following environment variables:
 | `DIRECT_URL` | PostgreSQL direct connection for migrations |
 | `ENCRYPTION_KEY` | Encryption key for merchant tokens (generate with `openssl rand -base64 32`) |
 | `CLERK_WEBHOOK_SIGNING_SECRET` | Clerk webhook signing secret (from Clerk Dashboard → Webhooks) |
+| `CLERK_SECRET_KEY` | Clerk secret key (from Clerk Dashboard → API Keys) - required for fetching user organization data |
 | `NODE_ENV` | Set to `production` for production deployment |
 
 **Note:** Square access tokens are now stored per-merchant in the database. After deployment, use `bun run merchant:add` to add merchants.
