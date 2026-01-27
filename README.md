@@ -76,21 +76,55 @@ NODE_ENV=development
 To sync Clerk users to your database, configure the webhook in Clerk Dashboard:
 
 1. **Webhook URL**: `https://ring-buddy-production.up.railway.app/webhooks/clerk`
-2. **Events**: Subscribe to `user.created`
+2. **Events**: Subscribe to all six:
+   - `user.created` - Creates user records when new users sign up
+   - `user.updated` - Updates user records when their information changes (email, name, etc.)
+   - `user.deleted` - Deletes user records when users are deleted in Clerk
+   - `organizationMembership.created` - Updates user's organization when they join an organization
+   - `organizationMembership.updated` - Updates user's organization when their membership changes (e.g., role change)
+   - `organizationMembership.deleted` - Removes user's organization when they leave an organization
 3. **Signing Secret**: Copy the webhook signing secret from Clerk Dashboard
-4. **Environment Variables**: Add the following to your Railway environment variables:
-   - `CLERK_WEBHOOK_SIGNING_SECRET` - Webhook signing secret (from Clerk Dashboard → Webhooks)
-   - `CLERK_SECRET_KEY` - Clerk secret key (from Clerk Dashboard → API Keys) - required to fetch full user data including organization memberships
+4. **Environment Variable**: Add `CLERK_WEBHOOK_SIGNING_SECRET` to your Railway environment variables
 
-When a new user is created in Clerk, the webhook will:
-1. Verify the webhook signature
-2. Fetch the full user data from Clerk's API (to get organization memberships)
-3. Automatically create a corresponding user record in your Supabase `users` table with:
-   - `clerk_user_id`
-   - `email`
-   - `first_name`
-   - `last_name`
-   - `clerk_organization_id` (if the user belongs to an organization)
+**How it works:**
+
+1. **`user.created` webhook**: When a new user is created in Clerk, the webhook will:
+   - Verify the webhook signature
+   - Automatically create a corresponding user record in your Supabase `users` table with:
+     - `clerk_user_id`
+     - `email`
+     - `first_name`
+     - `last_name`
+     - `clerk_organization_id` (initially `null`)
+
+2. **`user.updated` webhook**: When a user's information is updated in Clerk (email, name, etc.), the webhook will:
+   - Verify the webhook signature
+   - Update the corresponding user record in your Supabase `users` table with:
+     - `email` (updated primary email)
+     - `first_name` (updated first name)
+     - `last_name` (updated last name)
+   - If the user doesn't exist yet (webhook order edge case), it will be handled gracefully
+   - Note: Organization ID is not updated here - that's handled by organizationMembership webhooks
+
+3. **`user.deleted` webhook**: When a user is deleted in Clerk, the webhook will:
+   - Verify the webhook signature
+   - Delete the corresponding user record from your Supabase `users` table
+   - If the user doesn't exist (already deleted), it will be handled gracefully
+
+4. **`organizationMembership.created` webhook**: When a user joins an organization, the webhook will:
+   - Verify the webhook signature
+   - Update the user's `clerk_organization_id` in the database
+   - If the user doesn't exist yet (webhook order edge case), it will be handled gracefully
+
+5. **`organizationMembership.updated` webhook**: When a user's organization membership is updated (e.g., role change), the webhook will:
+   - Verify the webhook signature
+   - Update the user's `clerk_organization_id` in the database to ensure it's current
+   - If the user doesn't exist yet (webhook order edge case), it will be handled gracefully
+
+6. **`organizationMembership.deleted` webhook**: When a user leaves an organization, the webhook will:
+   - Verify the webhook signature
+   - Set the user's `clerk_organization_id` to `null` in the database
+   - Only updates if the user's current organization matches the one being deleted (handles edge cases)
 
 ### Development
 
@@ -220,7 +254,7 @@ All API endpoints require a `merchant_id` to identify which Square seller accoun
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/webhooks/clerk` | POST | Clerk webhook endpoint for `user.created` events |
+| `/webhooks/clerk` | POST | Clerk webhook endpoint for `user.created`, `user.updated`, `user.deleted`, `organizationMembership.created`, `organizationMembership.updated`, and `organizationMembership.deleted` events |
 
 ### System Endpoints
 
@@ -488,7 +522,7 @@ curl $BASE_URL/webhooks/clerk
 # Note: Clerk webhooks require signature verification
 # The webhook endpoint is configured in Clerk Dashboard:
 # URL: https://ring-buddy-production.up.railway.app/webhooks/clerk
-# Event: user.created
+# Events: user.created, user.updated, user.deleted, organizationMembership.created, organizationMembership.updated, organizationMembership.deleted
 ```
 
 ## Testing
@@ -528,7 +562,6 @@ In Railway's dashboard, add the following environment variables:
 | `DIRECT_URL` | PostgreSQL direct connection for migrations |
 | `ENCRYPTION_KEY` | Encryption key for merchant tokens (generate with `openssl rand -base64 32`) |
 | `CLERK_WEBHOOK_SIGNING_SECRET` | Clerk webhook signing secret (from Clerk Dashboard → Webhooks) |
-| `CLERK_SECRET_KEY` | Clerk secret key (from Clerk Dashboard → API Keys) - required for fetching user organization data |
 | `NODE_ENV` | Set to `production` for production deployment |
 
 **Note:** Square access tokens are now stored per-merchant in the database. After deployment, use `bun run merchant:add` to add merchants.
