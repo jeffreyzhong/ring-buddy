@@ -122,7 +122,7 @@ async function transformBooking(booking: Record<string, unknown>): Promise<Booki
       
       // Try to get the parent item name
       if (itemId && catalogResponse.relatedObjects) {
-        const parentItem = (catalogResponse.relatedObjects as Array<Record<string, unknown>>)
+        const parentItem = (catalogResponse.relatedObjects as unknown as Array<Record<string, unknown>>)
           .find((obj) => obj.id === itemId);
         if (parentItem) {
           const itemData = parentItem.itemData as Record<string, unknown> | undefined;

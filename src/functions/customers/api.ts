@@ -194,7 +194,7 @@ app.post('/search', async (c) => {
     if (args.name) {
       const searchName = args.name.toLowerCase();
       filteredCustomers = customers.filter((cust) => {
-        const fullName = `${cust.given_name || ''} ${cust.family_name || ''}`.toLowerCase();
+        const fullName = (cust.name || '').toLowerCase();
         return fullName.includes(searchName);
       });
     }
