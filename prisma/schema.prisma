@@ -24,7 +24,7 @@ model users {
   first_name            String
   last_name             String
   updated_at            DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
-  clerk_organization_id String
+  clerk_organization_id String?
   agent_phone_number    String?
   seller_name           String?
 }
@@ -32,19 +32,19 @@ model users {
 /// Merchant credentials for Square API access
 /// Access tokens are encrypted at rest using application-level encryption
 model merchants {
-  id                          BigInt   @id @default(autoincrement())
-  created_at                  DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
-  updated_at                  DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  id                             BigInt   @id @default(autoincrement())
+  created_at                     DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  updated_at                     DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
   /// Unique merchant identifier (used in API calls)
-  merchant_id                 String   @unique
+  merchant_id                    String   @unique
   /// Business name for display purposes
-  business_name               String?
+  business_name                  String?
   /// Encrypted Square access token
-  square_access_token_encrypted String
+  square_access_token_encrypted  String
   /// Encrypted Square refresh token (for OAuth flow)
   square_refresh_token_encrypted String?
   /// Whether this merchant uses sandbox or production
-  is_sandbox                  Boolean  @default(false)
+  is_sandbox                     Boolean  @default(false)
   /// Whether this merchant is active
-  is_active                   Boolean  @default(true)
+  is_active                      Boolean  @default(true)
 }
