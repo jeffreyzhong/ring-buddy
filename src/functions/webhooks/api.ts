@@ -10,10 +10,13 @@ const app = new Hono();
  * 
  * Handles webhooks from Clerk:
  * - user.updated: Updates user record when their information changes (email, name, etc.)
- * - user.deleted: Deletes the user record from the Supabase users table
+ * - user.deleted: Deletes the user record from the database
+ * - organization.created: Creates organization record when a new organization is created
+ * - organization.updated: Updates organization record when organization info changes (e.g., name)
+ * - organization.deleted: Deletes organization record and cascades to related records (users, locations, etc.)
  * - organizationMembership.created: Creates user record and sets organization_id when they join an organization
  * - organizationMembership.updated: Updates user's organization_id when their membership changes (e.g., role change)
- * - organizationMembership.deleted: Sets user's organization_id to null when they leave an organization
+ * - organizationMembership.deleted: Deletes user when they leave an organization (since clerk_organization_id is required)
  */
 app.post('/clerk', async (c) => {
   try {
@@ -50,7 +53,7 @@ app.post('/clerk', async (c) => {
       }
 
       // Find the user in the database
-      const existingUser = await prisma.users.findUnique({
+      const existingUser = await prisma.user.findUnique({
         where: { clerk_user_id: clerkUserId },
       });
 
@@ -82,7 +85,7 @@ app.post('/clerk', async (c) => {
 
       // Update user record in database
       // Note: We don't update clerk_organization_id here - that's handled by organizationMembership webhooks
-      const updatedUser = await prisma.users.update({
+      const updatedUser = await prisma.user.update({
         where: { clerk_user_id: clerkUserId },
         data: {
           email: primaryEmail,
@@ -117,7 +120,7 @@ app.post('/clerk', async (c) => {
       }
       
       // Find the user in the database
-      const existingUser = await prisma.users.findUnique({
+      const existingUser = await prisma.user.findUnique({
         where: { clerk_user_id: clerkUserId },
       });
       
@@ -134,7 +137,7 @@ app.post('/clerk', async (c) => {
       }
       
       // Delete the user record
-      await prisma.users.delete({
+      await prisma.user.delete({
         where: { clerk_user_id: clerkUserId },
       });
       
@@ -149,6 +152,165 @@ app.post('/clerk', async (c) => {
       );
     }
 
+    // Handle organization.created event
+    if (evt.type === 'organization.created') {
+      const orgData = evt.data;
+      
+      // Extract organization info from webhook payload
+      const clerkOrganizationId = orgData.id;
+      const organizationName = orgData.name;
+      
+      if (!clerkOrganizationId) {
+        console.error('Missing organization ID in organization.created webhook payload');
+        return c.json(errorResponse('Invalid webhook payload: missing organization ID'), 400);
+      }
+      
+      if (!organizationName) {
+        console.error('Missing organization name in organization.created webhook payload');
+        return c.json(errorResponse('Invalid webhook payload: missing organization name'), 400);
+      }
+      
+      // Check if organization already exists
+      const existingOrg = await prisma.organization.findUnique({
+        where: { clerk_organization_id: clerkOrganizationId },
+      });
+      
+      if (existingOrg) {
+        console.log('Organization already exists:', clerkOrganizationId);
+        return c.json(
+          successResponse({
+            message: 'Organization already exists',
+            clerk_organization_id: clerkOrganizationId,
+            organization_id: existingOrg.id.toString(),
+          }),
+          200
+        );
+      }
+      
+      // Create the organization record
+      const newOrg = await prisma.organization.create({
+        data: {
+          clerk_organization_id: clerkOrganizationId,
+          clerk_organization_name: organizationName,
+        },
+      });
+      
+      console.log('Created organization:', clerkOrganizationId, organizationName);
+      
+      return c.json(
+        successResponse({
+          message: 'Organization created successfully',
+          clerk_organization_id: clerkOrganizationId,
+          organization_name: organizationName,
+          organization_id: newOrg.id.toString(),
+        }),
+        201
+      );
+    }
+
+    // Handle organization.updated event
+    if (evt.type === 'organization.updated') {
+      const orgData = evt.data;
+      
+      // Extract organization info from webhook payload
+      const clerkOrganizationId = orgData.id;
+      const organizationName = orgData.name;
+      
+      if (!clerkOrganizationId) {
+        console.error('Missing organization ID in organization.updated webhook payload');
+        return c.json(errorResponse('Invalid webhook payload: missing organization ID'), 400);
+      }
+      
+      if (!organizationName) {
+        console.error('Missing organization name in organization.updated webhook payload');
+        return c.json(errorResponse('Invalid webhook payload: missing organization name'), 400);
+      }
+      
+      // Find the organization in the database
+      const existingOrg = await prisma.organization.findUnique({
+        where: { clerk_organization_id: clerkOrganizationId },
+      });
+      
+      if (!existingOrg) {
+        console.warn('Organization not found in database when processing organization.updated:', clerkOrganizationId);
+        // Organization doesn't exist - it will be created when organization.created webhook is received
+        return c.json(
+          successResponse({
+            message: 'Organization not found - will be created when organization.created webhook is received',
+            clerk_organization_id: clerkOrganizationId,
+          }),
+          200
+        );
+      }
+      
+      // Update the organization record
+      const updatedOrg = await prisma.organization.update({
+        where: { clerk_organization_id: clerkOrganizationId },
+        data: {
+          clerk_organization_name: organizationName,
+        },
+      });
+      
+      console.log('Updated organization:', clerkOrganizationId, organizationName);
+      
+      return c.json(
+        successResponse({
+          message: 'Organization updated successfully',
+          clerk_organization_id: clerkOrganizationId,
+          organization_name: organizationName,
+          organization_id: updatedOrg.id.toString(),
+        }),
+        200
+      );
+    }
+
+    // Handle organization.deleted event
+    // Deleting an organization cascades to related records (users, locations, merchant, etc.)
+    if (evt.type === 'organization.deleted') {
+      const orgData = evt.data;
+      
+      // Extract organization ID from webhook payload
+      const clerkOrganizationId = orgData.id;
+      
+      if (!clerkOrganizationId) {
+        console.error('Missing organization ID in organization.deleted webhook payload');
+        return c.json(errorResponse('Invalid webhook payload: missing organization ID'), 400);
+      }
+      
+      // Find the organization in the database
+      const existingOrg = await prisma.organization.findUnique({
+        where: { clerk_organization_id: clerkOrganizationId },
+      });
+      
+      if (!existingOrg) {
+        console.log('Organization not found in database when processing organization.deleted:', clerkOrganizationId);
+        // Organization doesn't exist - this is okay, just acknowledge
+        return c.json(
+          successResponse({
+            message: 'Organization not found - no action needed',
+            clerk_organization_id: clerkOrganizationId,
+          }),
+          200
+        );
+      }
+      
+      // Delete the organization record
+      // This will cascade delete related records (users, locations, merchant) due to onDelete: Cascade
+      await prisma.organization.delete({
+        where: { clerk_organization_id: clerkOrganizationId },
+      });
+      
+      console.log('Deleted organization:', clerkOrganizationId);
+      
+      return c.json(
+        successResponse({
+          message: 'Organization deleted successfully',
+          clerk_organization_id: clerkOrganizationId,
+        }),
+        200
+      );
+    }
+
     // Handle organizationMembership.created event
     if (evt.type === 'organizationMembership.created') {
       const membershipData = evt.data;
@@ -156,7 +318,6 @@ app.post('/clerk', async (c) => {
       // Extract user ID and organization info from webhook payload
       const clerkUserId = membershipData.public_user_data?.user_id;
       const organizationId = membershipData.organization?.id;
-      const organizationName = membershipData.organization?.name || null;
       const publicUserData = membershipData.public_user_data;
       
       if (!clerkUserId) {
@@ -180,20 +341,19 @@ app.post('/clerk', async (c) => {
       }
       
       // Find the user in the database
-      const existingUser = await prisma.users.findUnique({
+      const existingUser = await prisma.user.findUnique({
         where: { clerk_user_id: clerkUserId },
       });
       
       if (!existingUser) {
         // Create user record with organization info
-        const newUser = await prisma.users.create({
+        const newUser = await prisma.user.create({
           data: {
             clerk_user_id: clerkUserId,
             email: email,
             first_name: firstName,
             last_name: lastName,
             clerk_organization_id: organizationId,
-            seller_name: organizationName,
           },
         });
         
@@ -210,12 +370,11 @@ app.post('/clerk', async (c) => {
         );
       }
       
-      // Update user's organization ID and name
-      const updatedUser = await prisma.users.update({
+      // Update user's organization ID
+      const updatedUser = await prisma.user.update({
         where: { clerk_user_id: clerkUserId },
         data: {
           clerk_organization_id: organizationId,
-          seller_name: organizationName,
         },
       });
       
@@ -239,7 +398,6 @@ app.post('/clerk', async (c) => {
       // Extract user ID and organization info from webhook payload
       const clerkUserId = membershipData.public_user_data?.user_id;
       const organizationId = membershipData.organization?.id;
-      const organizationName = membershipData.organization?.name || null;
       
       if (!clerkUserId) {
         console.error('Missing user ID in organizationMembership.updated webhook payload');
@@ -252,7 +410,7 @@ app.post('/clerk', async (c) => {
       }
       
       // Find the user in the database
-      const existingUser = await prisma.users.findUnique({
+      const existingUser = await prisma.user.findUnique({
         where: { clerk_user_id: clerkUserId },
       });
       
@@ -269,12 +427,11 @@ app.post('/clerk', async (c) => {
         );
       }
       
-      // Update user's organization ID and name (this ensures it's current even if role/permissions changed)
-      const updatedUser = await prisma.users.update({
+      // Update user's organization ID (this ensures it's current even if role/permissions changed)
+      const updatedUser = await prisma.user.update({
         where: { clerk_user_id: clerkUserId },
         data: {
           clerk_organization_id: organizationId,
-          seller_name: organizationName,
         },
       });
       
@@ -292,6 +449,7 @@ app.post('/clerk', async (c) => {
     }
 
     // Handle organizationMembership.deleted event
+    // Since clerk_organization_id is required, we delete the user when they leave their organization
     if (evt.type === 'organizationMembership.deleted') {
       const membershipData = evt.data;
       
@@ -309,17 +467,20 @@ app.post('/clerk', async (c) => {
         return c.json(errorResponse('Invalid webhook payload: missing organization ID'), 400);
       }
       
-      // Find the user in the database
-      const existingUser = await prisma.users.findUnique({
-        where: { clerk_user_id: clerkUserId },
+      // Find the user in the database with matching organization
+      const existingUser = await prisma.user.findFirst({
+        where: { 
+          clerk_user_id: clerkUserId,
+          clerk_organization_id: organizationId,
+        },
       });
       
       if (!existingUser) {
         console.warn('User not found in database when processing organizationMembership.deleted:', clerkUserId);
-        // User might not exist - this is okay, just acknowledge
+        // User might not exist or belongs to different org - this is okay, just acknowledge
         return c.json(
           successResponse({
-            message: 'User not found - no action needed',
+            message: 'User not found for this organization - no action needed',
             clerk_user_id: clerkUserId,
             organization_id: organizationId,
           }),
@@ -327,47 +488,22 @@ app.post('/clerk', async (c) => {
         );
       }
       
-      // Only update if the user's current organization_id matches the one being deleted
-      // This handles cases where a user might belong to multiple organizations
-      // (though we only store one organization_id in the database)
-      if (existingUser.clerk_organization_id === organizationId) {
-        // Update user's organization ID to null
-        const updatedUser = await prisma.users.update({
-          where: { clerk_user_id: clerkUserId },
-          data: {
-            clerk_organization_id: null,
-          },
-        });
-        
-        console.log('Removed user from organization:', clerkUserId, '->', organizationId);
-        
-        return c.json(
-          successResponse({
-            message: 'User organization removed successfully',
-            clerk_user_id: clerkUserId,
-            organization_id: organizationId,
-            user_id: updatedUser.id.toString(),
-          }),
-          200
-        );
-      } else {
-        // User's organization_id doesn't match - they might have already joined another org
-        console.log('User organization_id does not match deleted membership:', {
-          userId: clerkUserId,
-          currentOrgId: existingUser.clerk_organization_id,
-          deletedOrgId: organizationId,
-        });
-        
-        return c.json(
-          successResponse({
-            message: 'User organization already updated - no change needed',
-            clerk_user_id: clerkUserId,
-            organization_id: organizationId,
-            current_organization_id: existingUser.clerk_organization_id,
-          }),
-          200
-        );
-      }
+      // Delete the user since clerk_organization_id is required
+      // User will be recreated if they join another organization
+      await prisma.user.delete({
+        where: { clerk_user_id: clerkUserId },
+      });
+      
+      console.log('Deleted user after leaving organization:', clerkUserId, 'from org:', organizationId);
+      
+      return c.json(
+        successResponse({
+          message: 'User deleted after leaving organization',
+          clerk_user_id: clerkUserId,
+          organization_id: organizationId,
+        }),
+        200
+      );
     }
 
     // For other event types, just acknowledge receipt
@@ -402,6 +538,9 @@ app.get('/clerk', (c) => {
     events: [
       'user.updated',
       'user.deleted',
+      'organization.created',
+      'organization.updated',
+      'organization.deleted',
       'organizationMembership.created',
       'organizationMembership.updated',
       'organizationMembership.deleted',

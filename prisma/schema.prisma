@@ -7,44 +7,94 @@ datasource db {
   provider = "postgresql"
 }
 
-/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model agents_config {
-  id                    BigInt   @id @default(autoincrement())
-  created_at            DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
-  clerk_organization_id String
-  agent_id              String
+model agent_config {
+  created_at          DateTime            @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  agent_id            String
+  phone_number_id     BigInt              @id @unique(map: "agents_config_phone_number_id_key")
+  phone_number_config phone_number_config @relation(fields: [phone_number_id], references: [id], onDelete: Cascade, map: "agents_config_phone_number_id_fkey")
 }
 
-/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model users {
-  id                    BigInt   @id @default(autoincrement())
-  created_at            DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
-  clerk_user_id         String   @unique
-  email                 String   @unique
+model location {
+  id                    BigInt                 @id @unique @default(autoincrement())
+  created_at            DateTime               @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  updated_at            DateTime               @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  clerk_organization_id String
+  merchant_location_id  String
+  timezone              String
+  address               Json                   @default("{}")
+  organization          organization           @relation(fields: [clerk_organization_id], references: [clerk_organization_id], onDelete: Cascade)
+  phone_number_config   phone_number_config[]
+  user_location_access  user_location_access[]
+
+  @@unique([id, clerk_organization_id], map: "id_clerk_organization_id_unique")
+  @@unique([clerk_organization_id, merchant_location_id], map: "location_org_merchant_location_unique")
+}
+
+model merchant {
+  id                             BigInt        @id(map: "merchants_pkey") @default(autoincrement())
+  created_at                     DateTime      @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  updated_at                     DateTime      @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  merchant_id                    String        @unique(map: "merchants_merchant_id_key")
+  square_access_token_encrypted  String
+  square_refresh_token_encrypted String?
+  is_sandbox                     Boolean       @default(false)
+  is_active                      Boolean       @default(true)
+  clerk_organization_id          String?       @unique
+  merchant_type                  merchant_type @default(OTHER)
+  organization                   organization? @relation(fields: [clerk_organization_id], references: [clerk_organization_id], onDelete: Cascade, map: "merchants_clerk_organization_id_fkey")
+}
+
+model organization {
+  id                      BigInt     @id(map: "organizations_pkey") @default(autoincrement())
+  created_at              DateTime   @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  updated_at              DateTime   @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  clerk_organization_id   String     @unique(map: "organizations_clerk_organization_id_key")
+  clerk_organization_name String
+  stripe_customer_id      String?
+  location                location[]
+  merchant                merchant?
+  user                    user[]
+}
+
+model phone_number_config {
+  id           BigInt        @id @unique @default(autoincrement())
+  created_at   DateTime      @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  updated_at   DateTime?     @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  phone_number String        @unique
+  location_id  BigInt
+  agent_config agent_config?
+  location     location      @relation(fields: [location_id], references: [id], onDelete: Cascade)
+}
+
+model user {
+  id                    BigInt                 @id(map: "users_pkey") @default(autoincrement())
+  created_at            DateTime               @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  clerk_user_id         String                 @unique(map: "users_clerk_user_id_key")
+  email                 String                 @unique(map: "users_email_key")
   first_name            String
   last_name             String
-  updated_at            DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
-  clerk_organization_id String?
-  agent_phone_number    String?
-  seller_name           String?
+  updated_at            DateTime               @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  clerk_organization_id String
+  organization          organization           @relation(fields: [clerk_organization_id], references: [clerk_organization_id], onDelete: Cascade, map: "users_clerk_organization_id_fkey")
+  user_location_access  user_location_access[]
+
+  @@unique([clerk_user_id, clerk_organization_id], map: "clerk_user_id_clerk_organization_id_unique")
 }
 
-/// Merchant credentials for Square API access
-/// Access tokens are encrypted at rest using application-level encryption
-model merchants {
-  id                             BigInt   @id @default(autoincrement())
-  created_at                     DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
-  updated_at                     DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
-  /// Unique merchant identifier (used in API calls)
-  merchant_id                    String   @unique
-  /// Business name for display purposes
-  business_name                  String?
-  /// Encrypted Square access token
-  square_access_token_encrypted  String
-  /// Encrypted Square refresh token (for OAuth flow)
-  square_refresh_token_encrypted String?
-  /// Whether this merchant uses sandbox or production
-  is_sandbox                     Boolean  @default(false)
-  /// Whether this merchant is active
-  is_active                      Boolean  @default(true)
+model user_location_access {
+  clerk_organization_id String
+  created_at            DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  updated_at            DateTime @default(dbgenerated("(now() AT TIME ZONE 'America/Los_Angeles'::text)")) @db.Timestamptz(6)
+  clerk_user_id         String
+  location_id           BigInt
+  location              location @relation(fields: [location_id, clerk_organization_id], references: [id, clerk_organization_id], onDelete: Cascade, map: "user_location_access_location_org_fkey")
+  user                  user     @relation(fields: [clerk_user_id, clerk_organization_id], references: [clerk_user_id, clerk_organization_id], onDelete: Cascade, map: "user_location_access_user_org_fkey")
+
+  @@id([clerk_organization_id, clerk_user_id, location_id])
+}
+
+enum merchant_type {
+  SQUARE
+  MINDBODY
+  OTHER
 }

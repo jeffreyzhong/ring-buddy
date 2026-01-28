@@ -15,7 +15,6 @@ import { encrypt, verifyEncryptionConfig } from "../src/lib/encryption";
 
 interface MerchantInput {
   merchantId: string;
-  businessName?: string;
   accessToken: string;
   refreshToken?: string;
   isSandbox: boolean;
@@ -34,7 +33,6 @@ function parseArgs(): MerchantInput | null {
     // ============================================
     return {
       merchantId: "example-merchant-id",      // Unique ID for API calls
-      businessName: "Example Business",        // Display name
       accessToken: "YOUR_SQUARE_ACCESS_TOKEN", // Square access token
       refreshToken: undefined,                 // Optional: Square refresh token
       isSandbox: true,                         // true for sandbox, false for production
@@ -49,8 +47,6 @@ function parseArgs(): MerchantInput | null {
   for (const arg of args) {
     if (arg.startsWith("--merchant-id=")) {
       parsed.merchantId = arg.split("=")[1];
-    } else if (arg.startsWith("--name=")) {
-      parsed.businessName = arg.split("=")[1];
     } else if (arg.startsWith("--token=")) {
       parsed.accessToken = arg.split("=")[1];
     } else if (arg.startsWith("--refresh-token=")) {
@@ -80,7 +76,6 @@ Usage: bun run scripts/add-merchant.ts [options]
 
 Options:
   --merchant-id=<id>       Unique merchant identifier (required)
-  --name=<name>            Business name (optional)
   --token=<token>          Square access token (required)
   --refresh-token=<token>  Square refresh token (optional)
   --sandbox                Use sandbox environment (default: production)
@@ -89,10 +84,10 @@ Options:
 
 Examples:
   # Add a sandbox merchant
-  bun run scripts/add-merchant.ts --merchant-id=acme-salon --name="Acme Salon" --token=EAAAl... --sandbox
+  bun run scripts/add-merchant.ts --merchant-id=acme-salon --token=EAAAl... --sandbox
 
   # Add a production merchant
-  bun run scripts/add-merchant.ts --merchant-id=acme-salon --name="Acme Salon" --token=EAAAl... --production
+  bun run scripts/add-merchant.ts --merchant-id=acme-salon --token=EAAAl... --production
 `);
 }
 
@@ -109,10 +104,9 @@ async function addMerchant(input: MerchantInput) {
   console.log("📝 Creating merchant record...");
   
   try {
-    const merchant = await prisma.merchants.create({
+    const merchant = await prisma.merchant.create({
       data: {
         merchant_id: input.merchantId,
-        business_name: input.businessName || null,
         square_access_token_encrypted: encryptedToken,
         square_refresh_token_encrypted: encryptedRefreshToken,
         is_sandbox: input.isSandbox,
@@ -123,7 +117,6 @@ async function addMerchant(input: MerchantInput) {
     console.log("\n✅ Merchant created successfully!\n");
     console.log("   ID:", merchant.id.toString());
     console.log("   Merchant ID:", merchant.merchant_id);
-    console.log("   Business Name:", merchant.business_name || "(not set)");
     console.log("   Environment:", merchant.is_sandbox ? "Sandbox" : "Production");
     console.log("   Active:", merchant.is_active);
     console.log("   Created:", merchant.created_at.toISOString());

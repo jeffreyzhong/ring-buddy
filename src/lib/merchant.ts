@@ -7,7 +7,6 @@ import { decrypt } from './encryption';
  */
 export interface MerchantConfig {
   merchantId: string;
-  businessName: string | null;
   accessToken: string;
   isSandbox: boolean;
 }
@@ -31,7 +30,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
  * @throws Error if merchant not found or inactive
  */
 export async function getMerchantConfig(merchantId: string): Promise<MerchantConfig> {
-  const merchant = await prisma.merchants.findUnique({
+  const merchant = await prisma.merchant.findUnique({
     where: { merchant_id: merchantId },
   });
 
@@ -48,7 +47,6 @@ export async function getMerchantConfig(merchantId: string): Promise<MerchantCon
 
   return {
     merchantId: merchant.merchant_id,
-    businessName: merchant.business_name,
     accessToken,
     isSandbox: merchant.is_sandbox,
   };

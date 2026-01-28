@@ -10,8 +10,11 @@ import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 
 async function listMerchants() {
-  const merchants = await prisma.merchants.findMany({
+  const merchants = await prisma.merchant.findMany({
     orderBy: { created_at: "desc" },
+    include: {
+      organization: true,
+    },
   });
 
   if (merchants.length === 0) {
@@ -26,7 +29,8 @@ async function listMerchants() {
   for (const merchant of merchants) {
     console.log(`
   Merchant ID:    ${merchant.merchant_id}
-  Business Name:  ${merchant.business_name || "(not set)"}
+  Type:           ${merchant.merchant_type}
+  Organization:   ${merchant.organization?.clerk_organization_name || "(not linked)"}
   Environment:    ${merchant.is_sandbox ? "🧪 Sandbox" : "🚀 Production"}
   Status:         ${merchant.is_active ? "✅ Active" : "❌ Inactive"}
   Created:        ${merchant.created_at.toISOString()}
