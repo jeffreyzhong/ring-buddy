@@ -6,6 +6,14 @@ import { errorResponse, successResponse } from '../../types';
 const app = new Hono();
 
 /**
+ * Get the current timestamp in America/Los_Angeles timezone.
+ * Used for updating the updated_at column.
+ */
+function getCurrentLATimestamp(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+}
+
+/**
  * Clerk webhook endpoint
  * 
  * Handles webhooks from Clerk:
@@ -91,7 +99,7 @@ app.post('/clerk', async (c) => {
           email: primaryEmail,
           first_name: firstName,
           last_name: lastName,
-          updated_at: new Date(),
+          updated_at: getCurrentLATimestamp(),
         },
       });
 
@@ -249,7 +257,7 @@ app.post('/clerk', async (c) => {
         where: { clerk_organization_id: clerkOrganizationId },
         data: {
           clerk_organization_name: organizationName,
-          updated_at: new Date(),
+          updated_at: getCurrentLATimestamp(),
         },
       });
       
@@ -377,7 +385,7 @@ app.post('/clerk', async (c) => {
         where: { clerk_user_id: clerkUserId },
         data: {
           clerk_organization_id: organizationId,
-          updated_at: new Date(),
+          updated_at: getCurrentLATimestamp(),
         },
       });
       
@@ -435,7 +443,7 @@ app.post('/clerk', async (c) => {
         where: { clerk_user_id: clerkUserId },
         data: {
           clerk_organization_id: organizationId,
-          updated_at: new Date(),
+          updated_at: getCurrentLATimestamp(),
         },
       });
       
