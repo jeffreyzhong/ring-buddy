@@ -153,9 +153,10 @@ app.post('/clerk', async (c) => {
     if (evt.type === 'organizationMembership.created') {
       const membershipData = evt.data;
       
-      // Extract user ID and organization ID from webhook payload
+      // Extract user ID and organization info from webhook payload
       const clerkUserId = membershipData.public_user_data?.user_id;
       const organizationId = membershipData.organization?.id;
+      const organizationName = membershipData.organization?.name || null;
       const publicUserData = membershipData.public_user_data;
       
       if (!clerkUserId) {
@@ -192,6 +193,7 @@ app.post('/clerk', async (c) => {
             first_name: firstName,
             last_name: lastName,
             clerk_organization_id: organizationId,
+            seller_name: organizationName,
           },
         });
         
@@ -208,11 +210,12 @@ app.post('/clerk', async (c) => {
         );
       }
       
-      // Update user's organization ID
+      // Update user's organization ID and name
       const updatedUser = await prisma.users.update({
         where: { clerk_user_id: clerkUserId },
         data: {
           clerk_organization_id: organizationId,
+          seller_name: organizationName,
         },
       });
       
@@ -233,9 +236,10 @@ app.post('/clerk', async (c) => {
     if (evt.type === 'organizationMembership.updated') {
       const membershipData = evt.data;
       
-      // Extract user ID and organization ID from webhook payload
+      // Extract user ID and organization info from webhook payload
       const clerkUserId = membershipData.public_user_data?.user_id;
       const organizationId = membershipData.organization?.id;
+      const organizationName = membershipData.organization?.name || null;
       
       if (!clerkUserId) {
         console.error('Missing user ID in organizationMembership.updated webhook payload');
@@ -265,11 +269,12 @@ app.post('/clerk', async (c) => {
         );
       }
       
-      // Update user's organization ID (this ensures it's current even if role/permissions changed)
+      // Update user's organization ID and name (this ensures it's current even if role/permissions changed)
       const updatedUser = await prisma.users.update({
         where: { clerk_user_id: clerkUserId },
         data: {
           clerk_organization_id: organizationId,
+          seller_name: organizationName,
         },
       });
       
