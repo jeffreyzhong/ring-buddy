@@ -6,6 +6,11 @@ Webhook API endpoints for AI voice agents to manage Square appointments. Built w
 
 HaloCall provides a complete set of API endpoints that enable AI voice agents to book, modify, and cancel appointments for Square sellers (spas, salons, and other service businesses). The endpoints integrate with Square's Bookings API and related services.
 
+### Voice Agent Documentation
+
+- **[VOICE_AGENT_API_GUIDE.md](./VOICE_AGENT_API_GUIDE.md)** - Complete API reference with request/response examples, booking flows, and best practices for integrating with voice agents.
+- **[VOICE_AGENT_README.md](./VOICE_AGENT_README.md)** - Operational manual designed as a system prompt for AI voice agents, with step-by-step flows and reliability guardrails.
+
 ## Tech Stack
 
 - **Runtime**: [Bun](https://bun.sh/) - Fast JavaScript runtime

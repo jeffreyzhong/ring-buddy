@@ -11,6 +11,7 @@ import staff from './functions/staff/api';
 import availability from './functions/availability/api';
 import bookings from './functions/bookings/api';
 import webhooks from './functions/webhooks/api';
+import voice from './functions/voice/api';
 
 // Import merchant middleware
 import { merchantMiddleware } from './lib/middleware';
@@ -29,6 +30,7 @@ app.use('/services/*', merchantMiddleware);
 app.use('/staff/*', merchantMiddleware);
 app.use('/availability/*', merchantMiddleware);
 app.use('/bookings/*', merchantMiddleware);
+app.use('/voice/*', merchantMiddleware);
 
 // Health check endpoint
 app.get('/health', (c) => {
@@ -53,34 +55,39 @@ app.get('/', (c) => {
       ],
     },
     endpoints: {
+      voice: {
+        base: '/voice',
+        description: 'Voice agent endpoints with name-based parameters (recommended for AI agents)',
+        routes: ['/services', '/staff', '/locations', '/availability', '/book', '/customer', '/customer/create', '/appointments', '/reschedule', '/cancel'],
+      },
       customers: {
         base: '/customers',
-        description: 'Customer lookup and management',
+        description: 'Customer lookup and management (ID-based)',
         routes: ['/lookup', '/search', '/create', '/bookings'],
       },
       locations: {
         base: '/locations',
-        description: 'Business location information',
+        description: 'Business location information (ID-based)',
         routes: ['/list', '/get'],
       },
       services: {
         base: '/services',
-        description: 'Bookable service catalog',
+        description: 'Bookable service catalog (ID-based)',
         routes: ['/list', '/get'],
       },
       staff: {
         base: '/staff',
-        description: 'Team member/staff information',
+        description: 'Team member/staff information (ID-based)',
         routes: ['/list', '/get'],
       },
       availability: {
         base: '/availability',
-        description: 'Time slot availability search',
+        description: 'Time slot availability search (ID-based)',
         routes: ['/search'],
       },
       bookings: {
         base: '/bookings',
-        description: 'Appointment booking management',
+        description: 'Appointment booking management (ID-based)',
         routes: ['/create', '/get', '/update', '/cancel', '/list'],
       },
     },
@@ -96,6 +103,7 @@ app.route('/staff', staff);
 app.route('/availability', availability);
 app.route('/bookings', bookings);
 app.route('/webhooks', webhooks);
+app.route('/voice', voice);
 
 // 404 handler
 app.notFound((c) => {

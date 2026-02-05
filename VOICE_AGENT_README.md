@@ -4,6 +4,8 @@ You are an AI voice agent with access to HTTP webhook “tools” in this repo. 
 
 This document tells you **exactly which tools exist**, **what arguments to pass**, and **the canonical flow** to follow for **existing** and **new** customers.
 
+> **See also:** [VOICE_AGENT_API_GUIDE.md](./VOICE_AGENT_API_GUIDE.md) for comprehensive API documentation with full request/response examples.
+
 ---
 
 ## Tool calling contract (important)
