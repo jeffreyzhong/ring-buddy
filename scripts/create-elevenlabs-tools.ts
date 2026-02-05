@@ -1,33 +1,37 @@
+#!/usr/bin/env bun
 /**
  * Creates all HaloCall voice tools in ElevenLabs workspace
  * 
  * Usage:
- *   ELEVENLABS_API_KEY=your_key bun run scripts/create-elevenlabs-tools.ts
+ *   bun run scripts/create-elevenlabs-tools.ts
  *   
  * Options:
  *   --base-url=https://custom-url.com  Override the HaloCall API base URL
  *   --dry-run                          Print tool configs without creating
+ * 
+ * Note: The ElevenLabs tool API uses OpenAPI 3.0 schema format for webhooks.
  */
+
+import "dotenv/config";
 
 const ELEVENLABS_API = 'https://api.elevenlabs.io/v1/convai/tools';
 
-interface ToolParameter {
-  name: string;
-  type: 'string' | 'number' | 'boolean';
-  description: string;
-  required?: boolean;
+interface OpenAPISchema {
+  type: string;
+  description?: string;
+  properties?: Record<string, { type: string; description: string }>;
+  required?: string[];
 }
 
 interface WebhookToolConfig {
   type: 'webhook';
   name: string;
   description: string;
-  params: {
-    method: 'GET' | 'POST';
+  api_schema: {
     url: string;
-    request_headers?: Record<string, string>;
-    body_parameters?: ToolParameter[];
-    query_parameters?: ToolParameter[];
+    method: 'GET' | 'POST';
+    request_body_schema?: OpenAPISchema;
+    headers?: Record<string, string>;
   };
 }
 
@@ -51,15 +55,29 @@ async function createTool(apiKey: string, config: WebhookToolConfig): Promise<st
 }
 
 function buildToolConfigs(baseUrl: string): WebhookToolConfig[] {
+  // Common headers for all tools - uses dynamic variable for merchant ID
+  // The {{secret__merchant_id}} placeholder gets replaced per-agent in ElevenLabs
+  const commonHeaders = {
+    'X-Merchant-ID': '{{secret__merchant_id}}',
+    'X-ElevenLabs-Secret': '{{secret__elevenlabs_webhook_secret}}',
+    'Content-Type': 'application/json',
+  };
+  
   return [
     // Tool 1: list_services
     {
       type: 'webhook',
       name: 'list_services',
       description: 'Get the list of available services and their prices. Call this when the customer asks what services are available or you need to confirm service options.',
-      params: {
-        method: 'POST',
+      api_schema: {
         url: `${baseUrl}/voice/services`,
+        method: 'POST',
+        headers: commonHeaders,
+        request_body_schema: {
+          type: 'object',
+          description: 'No parameters required',
+          properties: {},
+        },
       },
     },
     
@@ -68,15 +86,20 @@ function buildToolConfigs(baseUrl: string): WebhookToolConfig[] {
       type: 'webhook',
       name: 'check_availability',
       description: 'Find available appointment times for a service. Use when the customer wants to book or asks about availability.',
-      params: {
-        method: 'POST',
+      api_schema: {
         url: `${baseUrl}/voice/availability`,
-        body_parameters: [
-          { name: 'service_name', type: 'string', description: "The service the customer wants (e.g., 'Swedish massage', 'haircut'). Use the exact name from list_services if available.", required: true },
-          { name: 'staff_name', type: 'string', description: "Optional. Staff member the customer prefers. Use 'anyone' or omit if no preference." },
-          { name: 'location_name', type: 'string', description: 'Optional. Location name if there are multiple locations.' },
-          { name: 'date_preference', type: 'string', description: "When the customer wants the appointment. Examples: 'tomorrow', 'next Tuesday', 'Thursday afternoon'. Use natural language.", required: true },
-        ],
+        method: 'POST',
+        headers: commonHeaders,
+        request_body_schema: {
+          type: 'object',
+          properties: {
+            service_name: { type: 'string', description: "The service the customer wants (e.g., 'Swedish massage', 'haircut'). Use the exact name from list_services if available." },
+            staff_name: { type: 'string', description: "Staff member the customer prefers. Use 'anyone' or omit if no preference." },
+            location_name: { type: 'string', description: 'Location name if there are multiple locations.' },
+            date_preference: { type: 'string', description: "When the customer wants the appointment. Examples: 'tomorrow', 'next Tuesday', 'Thursday afternoon'. Use natural language." },
+          },
+          required: ['service_name', 'date_preference'],
+        },
       },
     },
     
@@ -85,17 +108,22 @@ function buildToolConfigs(baseUrl: string): WebhookToolConfig[] {
       type: 'webhook',
       name: 'book_appointment',
       description: 'Create a new appointment booking. Only call after confirming the time with the customer.',
-      params: {
-        method: 'POST',
+      api_schema: {
         url: `${baseUrl}/voice/book`,
-        body_parameters: [
-          { name: 'service_name', type: 'string', description: 'The service to book (must match a known service).', required: true },
-          { name: 'time', type: 'string', description: "The specific time to book. Examples: 'tomorrow at 2pm', 'Thursday at 10:30am'. Must be a specific time.", required: true },
-          { name: 'staff_name', type: 'string', description: 'Optional. Staff member name if requested.' },
-          { name: 'location_name', type: 'string', description: 'Optional. Location if there are multiple.' },
-          { name: 'customer_phone', type: 'string', description: "Customer's phone number if not already identified." },
-          { name: 'notes', type: 'string', description: 'Optional notes for the appointment.' },
-        ],
+        method: 'POST',
+        headers: commonHeaders,
+        request_body_schema: {
+          type: 'object',
+          properties: {
+            service_name: { type: 'string', description: 'The service to book (must match a known service).' },
+            time: { type: 'string', description: "The specific time to book. Examples: 'tomorrow at 2pm', 'Thursday at 10:30am'. Must be a specific time." },
+            staff_name: { type: 'string', description: 'Staff member name if requested.' },
+            location_name: { type: 'string', description: 'Location if there are multiple.' },
+            customer_phone: { type: 'string', description: "Customer's phone number if not already identified." },
+            notes: { type: 'string', description: 'Notes for the appointment.' },
+          },
+          required: ['service_name', 'time'],
+        },
       },
     },
     
@@ -104,12 +132,17 @@ function buildToolConfigs(baseUrl: string): WebhookToolConfig[] {
       type: 'webhook',
       name: 'lookup_customer',
       description: "Look up a customer by phone number. Use at the start of the call with caller ID, or when customer provides their phone number.",
-      params: {
-        method: 'POST',
+      api_schema: {
         url: `${baseUrl}/voice/customer`,
-        body_parameters: [
-          { name: 'phone', type: 'string', description: "Customer's phone number in any format.", required: true },
-        ],
+        method: 'POST',
+        headers: commonHeaders,
+        request_body_schema: {
+          type: 'object',
+          properties: {
+            phone: { type: 'string', description: "Customer's phone number in any format." },
+          },
+          required: ['phone'],
+        },
       },
     },
     
@@ -118,15 +151,20 @@ function buildToolConfigs(baseUrl: string): WebhookToolConfig[] {
       type: 'webhook',
       name: 'create_customer',
       description: 'Create a new customer profile. Use when lookup_customer returns not found.',
-      params: {
-        method: 'POST',
+      api_schema: {
         url: `${baseUrl}/voice/customer/create`,
-        body_parameters: [
-          { name: 'first_name', type: 'string', description: "Customer's first name.", required: true },
-          { name: 'last_name', type: 'string', description: "Customer's last name (optional)." },
-          { name: 'phone', type: 'string', description: "Customer's phone number.", required: true },
-          { name: 'email', type: 'string', description: "Customer's email address (optional)." },
-        ],
+        method: 'POST',
+        headers: commonHeaders,
+        request_body_schema: {
+          type: 'object',
+          properties: {
+            first_name: { type: 'string', description: "Customer's first name." },
+            last_name: { type: 'string', description: "Customer's last name." },
+            phone: { type: 'string', description: "Customer's phone number." },
+            email: { type: 'string', description: "Customer's email address." },
+          },
+          required: ['first_name', 'phone'],
+        },
       },
     },
     
@@ -135,12 +173,17 @@ function buildToolConfigs(baseUrl: string): WebhookToolConfig[] {
       type: 'webhook',
       name: 'get_appointments',
       description: "Get a customer's upcoming appointments. Use when customer asks about their existing bookings.",
-      params: {
-        method: 'POST',
+      api_schema: {
         url: `${baseUrl}/voice/appointments`,
-        body_parameters: [
-          { name: 'phone', type: 'string', description: "Customer's phone number.", required: true },
-        ],
+        method: 'POST',
+        headers: commonHeaders,
+        request_body_schema: {
+          type: 'object',
+          properties: {
+            phone: { type: 'string', description: "Customer's phone number." },
+          },
+          required: ['phone'],
+        },
       },
     },
     
@@ -149,13 +192,18 @@ function buildToolConfigs(baseUrl: string): WebhookToolConfig[] {
       type: 'webhook',
       name: 'reschedule_appointment',
       description: 'Reschedule an existing appointment to a new time.',
-      params: {
-        method: 'POST',
+      api_schema: {
         url: `${baseUrl}/voice/reschedule`,
-        body_parameters: [
-          { name: 'current_appointment', type: 'string', description: "Description of the appointment to reschedule. Examples: 'my massage tomorrow', 'the 2pm on Thursday'.", required: true },
-          { name: 'new_time', type: 'string', description: 'The new time for the appointment. Must be a specific time.', required: true },
-        ],
+        method: 'POST',
+        headers: commonHeaders,
+        request_body_schema: {
+          type: 'object',
+          properties: {
+            current_appointment: { type: 'string', description: "Description of the appointment to reschedule. Examples: 'my massage tomorrow', 'the 2pm on Thursday'." },
+            new_time: { type: 'string', description: 'The new time for the appointment. Must be a specific time.' },
+          },
+          required: ['current_appointment', 'new_time'],
+        },
       },
     },
     
@@ -164,13 +212,18 @@ function buildToolConfigs(baseUrl: string): WebhookToolConfig[] {
       type: 'webhook',
       name: 'cancel_appointment',
       description: 'Cancel an existing appointment.',
-      params: {
-        method: 'POST',
+      api_schema: {
         url: `${baseUrl}/voice/cancel`,
-        body_parameters: [
-          { name: 'appointment', type: 'string', description: "Description of the appointment to cancel. Examples: 'my massage tomorrow', 'the Thursday appointment'.", required: true },
-          { name: 'reason', type: 'string', description: 'Optional reason for cancellation.' },
-        ],
+        method: 'POST',
+        headers: commonHeaders,
+        request_body_schema: {
+          type: 'object',
+          properties: {
+            appointment: { type: 'string', description: "Description of the appointment to cancel. Examples: 'my massage tomorrow', 'the Thursday appointment'." },
+            reason: { type: 'string', description: 'Reason for cancellation.' },
+          },
+          required: ['appointment'],
+        },
       },
     },
   ];
@@ -237,10 +290,13 @@ async function main() {
     console.log(`\nNext steps:`);
     console.log(`1. Go to ElevenLabs Dashboard → Agents`);
     console.log(`2. Create/edit an agent and attach these tools`);
-    console.log(`3. Add X-Merchant-ID header (as secret) for each agent`);
-    console.log(`   - In agent settings, go to Tools → (each tool) → Headers`);
-    console.log(`   - Add header: X-Merchant-ID = your_merchant_id`);
-    console.log(`   - Mark as "Secret" to hide from the LLM`);
+    console.log(`3. Configure the merchant_id secret variable for each agent:`);
+    console.log(`   - In agent settings, go to "Dynamic Variables" or "Secrets"`);
+    console.log(`   - Add a variable named: merchant_id`);
+    console.log(`   - Set its value to the merchant's ID (e.g., "acme-salon")`);
+    console.log(`   - Mark as "Secret" so the LLM cannot see it`);
+    console.log(`\n   The tools are pre-configured with {{secret__merchant_id}} in the`);
+    console.log(`   X-Merchant-ID header, so this value will be injected automatically.`);
   }
 }
 

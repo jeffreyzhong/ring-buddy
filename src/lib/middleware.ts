@@ -21,9 +21,22 @@ export interface MerchantVariables {
  * 3. Query parameter as `merchant_id`
  * 4. Header as `X-Merchant-ID`
  * 
+ * Also validates the X-ElevenLabs-Secret header if ELEVENLABS_WEBHOOK_SECRET
+ * environment variable is set (for securing webhook calls from ElevenLabs).
+ * 
  * The Square client is then available via `c.get('squareClient')`
  */
 export async function merchantMiddleware(c: Context, next: Next) {
+  // Validate webhook secret if configured
+  const webhookSecret = process.env.ELEVENLABS_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const providedSecret = c.req.header('X-ElevenLabs-Secret');
+    if (providedSecret !== webhookSecret) {
+      console.error('Invalid or missing ElevenLabs webhook secret');
+      return c.json(errorResponse('Unauthorized'), 401);
+    }
+  }
+
   let merchantId: string | undefined;
 
   // Try to get merchant_id from various sources

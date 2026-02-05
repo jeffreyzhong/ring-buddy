@@ -80,9 +80,11 @@ Create each tool manually in the ElevenLabs dashboard:
 3. Attach the HaloCall tools to the agent
 4. **Critical**: Add the merchant ID header to each tool
 
-### Adding the Merchant ID Header
+### Adding Required Headers
 
-For each tool attached to the agent:
+For each tool attached to the agent, you need to configure two secret headers:
+
+#### 1. Merchant ID Header
 
 1. Click on the tool → **Edit**
 2. Go to **Headers**
@@ -90,6 +92,29 @@ For each tool attached to the agent:
    - **Key**: `X-Merchant-ID`
    - **Value**: Your merchant's ID (from HaloCall)
    - **Secret**: ✓ Enable (hides from LLM)
+
+#### 2. Webhook Secret Header (Authentication)
+
+1. In the same Headers section, add another header:
+   - **Key**: `X-ElevenLabs-Secret`
+   - **Value**: Your webhook secret (from `ELEVENLABS_WEBHOOK_SECRET` env var)
+   - **Secret**: ✓ Enable (hides from LLM)
+
+This header authenticates webhook calls from ElevenLabs to the HaloCall API. Without it, requests will be rejected with a 401 Unauthorized error.
+
+### Using Dynamic Variables (Recommended for Multi-Tenant)
+
+Instead of hardcoding values, use dynamic variables for per-agent configuration:
+
+1. **In Agent Settings** → **Overrides** → **Dynamic Variables**:
+   - Add `secret__merchant_id` with the merchant's ID
+   - Add `secret__elevenlabs_webhook_secret` with the webhook secret
+
+2. **In Tool Headers**, reference the variables:
+   - `X-Merchant-ID`: `{{secret__merchant_id}}`
+   - `X-ElevenLabs-Secret`: `{{secret__elevenlabs_webhook_secret}}`
+
+This allows sharing tools across agents while customizing authentication per merchant.
 
 ## Tool Reference
 

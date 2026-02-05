@@ -560,4 +560,177 @@ app.get('/clerk', (c) => {
   });
 });
 
+/**
+ * Normalize phone number for lookup.
+ * Removes all non-digit characters and ensures consistent format.
+ */
+function normalizePhoneNumber(phone: string): string {
+  // Remove all non-digit characters
+  const digits = phone.replace(/\D/g, '');
+  
+  // If it's a US number without country code, add +1
+  if (digits.length === 10) {
+    return `+1${digits}`;
+  }
+  
+  // If it already has country code, add +
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+${digits}`;
+  }
+  
+  // Return with + prefix for international numbers
+  return `+${digits}`;
+}
+
+/**
+ * ElevenLabs conversation initiation webhook
+ * 
+ * Called by ElevenLabs when an inbound Twilio call is received.
+ * Returns dynamic variables including the merchant_id based on the called phone number.
+ * 
+ * Request body from ElevenLabs:
+ * - caller_id: The phone number of the caller
+ * - agent_id: The ID of the ElevenLabs agent receiving the call
+ * - called_number: The Twilio number that was called
+ * - call_sid: Unique identifier for the Twilio call
+ * 
+ * Authentication:
+ * - Requires X-ElevenLabs-Secret header matching ELEVENLABS_WEBHOOK_SECRET env var
+ */
+app.post('/elevenlabs-init', async (c) => {
+  try {
+    // Validate the webhook secret
+    const webhookSecret = process.env.ELEVENLABS_WEBHOOK_SECRET;
+    const providedSecret = c.req.header('X-ElevenLabs-Secret');
+    
+    if (webhookSecret && providedSecret !== webhookSecret) {
+      console.error('Invalid ElevenLabs webhook secret');
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+    
+    const body = await c.req.json();
+    const { caller_id, agent_id, called_number, call_sid } = body;
+    
+    console.log('ElevenLabs init webhook received:', {
+      caller_id,
+      agent_id,
+      called_number,
+      call_sid,
+    });
+    
+    if (!called_number) {
+      console.error('Missing called_number in ElevenLabs init webhook');
+      return c.json({
+        type: 'conversation_initiation_client_data',
+        dynamic_variables: {},
+      }, 200);
+    }
+    
+    // Normalize the phone number for lookup
+    const normalizedPhone = normalizePhoneNumber(called_number);
+    
+    // Look up the phone number config to find the associated merchant
+    const phoneConfig = await prisma.phone_number_config.findFirst({
+      where: {
+        OR: [
+          { phone_number: normalizedPhone },
+          { phone_number: called_number },
+          // Try without + prefix
+          { phone_number: normalizedPhone.replace('+', '') },
+        ],
+      },
+      include: {
+        location: {
+          include: {
+            organization: {
+              include: {
+                merchant: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    
+    if (!phoneConfig) {
+      console.warn('No phone config found for:', called_number, '(normalized:', normalizedPhone, ')');
+      return c.json({
+        type: 'conversation_initiation_client_data',
+        dynamic_variables: {
+          // Return caller info even if we can't find the merchant
+          caller_phone: caller_id || '',
+        },
+      }, 200);
+    }
+    
+    const merchant = phoneConfig.location?.organization?.merchant;
+    
+    if (!merchant) {
+      console.warn('No merchant found for phone number:', called_number);
+      return c.json({
+        type: 'conversation_initiation_client_data',
+        dynamic_variables: {
+          caller_phone: caller_id || '',
+        },
+      }, 200);
+    }
+    
+    console.log('Found merchant for call:', {
+      phone: called_number,
+      merchant_id: merchant.merchant_id,
+      location_timezone: phoneConfig.location?.timezone,
+    });
+    
+    // Return the dynamic variables for the conversation
+    return c.json({
+      type: 'conversation_initiation_client_data',
+      dynamic_variables: {
+        // Secret variable - only used in tool headers, not visible to LLM
+        'secret__merchant_id': merchant.merchant_id,
+        // Regular variables - can be used in prompts
+        caller_phone: caller_id || '',
+        location_timezone: phoneConfig.location?.timezone || 'America/Los_Angeles',
+      },
+    }, 200);
+    
+  } catch (error) {
+    console.error('ElevenLabs init webhook error:', error);
+    // Return empty dynamic variables on error - don't break the call
+    return c.json({
+      type: 'conversation_initiation_client_data',
+      dynamic_variables: {},
+    }, 200);
+  }
+});
+
+/**
+ * GET endpoint for testing ElevenLabs init webhook
+ */
+app.get('/elevenlabs-init', (c) => {
+  return c.json({
+    name: 'elevenlabs-init-webhook',
+    description: 'ElevenLabs conversation initiation webhook for inbound Twilio calls',
+    method: 'POST',
+    endpoint: '/webhooks/elevenlabs-init',
+    authentication: {
+      header: 'X-ElevenLabs-Secret',
+      description: 'Must match ELEVENLABS_WEBHOOK_SECRET environment variable',
+    },
+    request_body: {
+      caller_id: 'The phone number of the caller',
+      agent_id: 'The ID of the ElevenLabs agent',
+      called_number: 'The Twilio number that was called',
+      call_sid: 'Unique identifier for the Twilio call',
+    },
+    response: {
+      type: 'conversation_initiation_client_data',
+      dynamic_variables: {
+        'secret__merchant_id': 'The merchant ID for HaloCall API calls',
+        caller_phone: 'The caller phone number',
+        location_timezone: 'The timezone for the location',
+      },
+    },
+  });
+});
+
 export default app;
