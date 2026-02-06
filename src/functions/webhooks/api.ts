@@ -665,7 +665,9 @@ app.post('/elevenlabs-init', async (c) => {
     
     if (webhookSecret && providedSecret !== webhookSecret) {
       console.error('Invalid ElevenLabs webhook secret');
-      return c.json({ error: 'Unauthorized' }, 401);
+      const errorResponse = { error: 'Unauthorized' };
+      console.log('ElevenLabs init response:', errorResponse);
+      return c.json(errorResponse, 401);
     }
     
     const body = await c.req.json();
@@ -680,10 +682,12 @@ app.post('/elevenlabs-init', async (c) => {
     
     if (!called_number) {
       console.error('Missing called_number in ElevenLabs init webhook');
-      return c.json({
+      const response = {
         type: 'conversation_initiation_client_data',
         dynamic_variables: {},
-      }, 200);
+      };
+      console.log('ElevenLabs init response:', response);
+      return c.json(response, 200);
     }
     
     // Normalize the phone number for lookup
@@ -738,7 +742,7 @@ app.post('/elevenlabs-init', async (c) => {
           }
         }
 
-        return c.json({
+        const fallbackResponse = {
           type: 'conversation_initiation_client_data',
           dynamic_variables: {
             'secret__merchant_id': fallbackMerchantId,
@@ -746,28 +750,34 @@ app.post('/elevenlabs-init', async (c) => {
             location_timezone: 'America/Los_Angeles',
             ...fallbackCustomerVars,
           },
-        }, 200);
+        };
+        console.log('ElevenLabs init response:', fallbackResponse);
+        return c.json(fallbackResponse, 200);
       }
       
-      return c.json({
+      const noPhoneConfigResponse = {
         type: 'conversation_initiation_client_data',
         dynamic_variables: {
           // Return caller info even if we can't find the merchant
           caller_phone: caller_id || '',
         },
-      }, 200);
+      };
+      console.log('ElevenLabs init response:', noPhoneConfigResponse);
+      return c.json(noPhoneConfigResponse, 200);
     }
     
     const merchant = phoneConfig.location?.organization?.merchant;
     
     if (!merchant) {
       console.warn('No merchant found for phone number:', called_number);
-      return c.json({
+      const noMerchantResponse = {
         type: 'conversation_initiation_client_data',
         dynamic_variables: {
           caller_phone: caller_id || '',
         },
-      }, 200);
+      };
+      console.log('ElevenLabs init response:', noMerchantResponse);
+      return c.json(noMerchantResponse, 200);
     }
     
     console.log('Found merchant for call:', {
@@ -798,7 +808,7 @@ app.post('/elevenlabs-init', async (c) => {
     }
 
     // Return the dynamic variables for the conversation
-    return c.json({
+    const successResponse = {
       type: 'conversation_initiation_client_data',
       dynamic_variables: {
         // Secret variable - only used in tool headers, not visible to LLM
@@ -808,15 +818,19 @@ app.post('/elevenlabs-init', async (c) => {
         location_timezone: phoneConfig.location?.timezone || 'America/Los_Angeles',
         ...customerVars,
       },
-    }, 200);
+    };
+    console.log('ElevenLabs init response:', successResponse);
+    return c.json(successResponse, 200);
     
   } catch (error) {
     console.error('ElevenLabs init webhook error:', error);
     // Return empty dynamic variables on error - don't break the call
-    return c.json({
+    const errorResponse = {
       type: 'conversation_initiation_client_data',
       dynamic_variables: {},
-    }, 200);
+    };
+    console.log('ElevenLabs init response:', errorResponse);
+    return c.json(errorResponse, 200);
   }
 });
 
