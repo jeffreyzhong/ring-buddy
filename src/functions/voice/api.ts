@@ -419,15 +419,41 @@ app.post('/book', async (c) => {
     }
     const service = serviceResult.match;
 
-    // 3. Resolve staff (optional)
-    let teamMemberId: string | undefined;
-    let staffName: string | undefined;
-    if (args.staff_name && args.staff_name.toLowerCase() !== 'anyone' && args.staff_name.toLowerCase() !== 'any') {
-      const staffResult = await resolveStaffName(squareClient, args.staff_name, locationId);
-      if (staffResult.match) {
-        teamMemberId = staffResult.match.team_member_id;
-        staffName = staffResult.match.name;
+    // 3. Resolve staff (required)
+    if (!args.staff_name) {
+      return c.json(errorResponse('Do you have a preference for which staff member you see, or would you like me to book with whoever is available?'), 400);
+    }
+
+    let teamMemberId: string;
+    let staffName: string;
+    const isAnyStaff = ['anyone', 'any'].includes(args.staff_name.toLowerCase());
+
+    if (isAnyStaff) {
+      // Pick the first available bookable team member for this location
+      const allStaff = await listStaff(squareClient, locationId);
+      if (allStaff.length === 0) {
+        return c.json(errorResponse('There are no staff members available for booking at this location right now.'), 404);
       }
+      teamMemberId = allStaff[0].team_member_id;
+      staffName = allStaff[0].name;
+    } else {
+      // Resolve the named staff member
+      const staffResult = await resolveStaffName(squareClient, args.staff_name, locationId);
+      if (staffResult.confidence === 'none' || !staffResult.match) {
+        const allStaff = await listStaff(squareClient, locationId);
+        const staffNames = allStaff.map(s => s.name).join(', ');
+        return c.json(errorResponse(
+          `I wasn't able to find someone by that name. Our available staff are: ${staffNames}. Would any of them work for you?`
+        ), 404);
+      }
+      if (staffResult.confidence === 'ambiguous') {
+        const options = staffResult.alternatives!.map(s => s.name).join(', ');
+        return c.json(errorResponse(
+          `Multiple staff members match "${args.staff_name}". Could you be more specific? Options: ${options}.`
+        ), 400);
+      }
+      teamMemberId = staffResult.match.team_member_id;
+      staffName = staffResult.match.name;
     }
 
     // 4. Parse booking time
@@ -444,10 +470,8 @@ app.post('/book', async (c) => {
     const appointmentSegment: Record<string, unknown> = {
       serviceVariationId: service.variation_id,
       serviceVariationVersion: BigInt(Date.now()),
+      teamMemberId,
     };
-    if (teamMemberId) {
-      appointmentSegment.teamMemberId = teamMemberId;
-    }
 
     const bookingData: Record<string, unknown> = {
       locationId,
@@ -481,7 +505,7 @@ app.post('/book', async (c) => {
 
     // 7. Build confirmation response
     const appointmentTime = formatForVoice(booking.startAt as string, location.timezone);
-    const summary = `Great! I've booked your ${getServiceDisplayName(service)} for ${appointmentTime} at ${locationName}${staffName ? ` with ${staffName}` : ''}. Your confirmation number is ${(booking.id as string).slice(-6)}.`;
+    const summary = `Great! I've booked your ${getServiceDisplayName(service)} for ${appointmentTime} at ${locationName} with ${staffName}. Your confirmation number is ${(booking.id as string).slice(-6)}.`;
 
     return c.json(successResponse({
       confirmation_id: booking.id as string,

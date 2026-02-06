@@ -45,8 +45,8 @@ export interface VoiceBookArgs {
   service_name: string;
   /** Specific time (e.g., "tomorrow at 2pm", "Thursday at 10:30am") */
   time: string;
-  /** Optional: staff member name */
-  staff_name?: string;
+  /** Staff member name, or "anyone" if no preference */
+  staff_name: string;
   /** Optional: location name */
   location_name?: string;
   /** Optional: customer phone number (for new customers or identification) */
