@@ -208,12 +208,15 @@ export function parseNaturalDateTime(
   
   if (hasTime && !timePeriod) {
     // Specific time mentioned - this is an exact booking time
+    // Range still needs a minimum 1-hour window for availability searches
+    const rangeEndDate = new Date(parsedDate);
+    rangeEndDate.setHours(rangeEndDate.getHours() + 2);
     return {
       startAt: toRFC3339(parsedDate, timezone),
       humanReadable: formatHumanReadable(parsedDate, true),
       isRange: false,
       rangeStart: toRFC3339(parsedDate, timezone),
-      rangeEnd: toRFC3339(parsedDate, timezone),
+      rangeEnd: toRFC3339(rangeEndDate, timezone),
     };
   }
   

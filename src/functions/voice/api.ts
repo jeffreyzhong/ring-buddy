@@ -80,6 +80,26 @@ function formatStatus(status: string): string {
 }
 
 /**
+ * Describe a slot count in natural, conversational language
+ */
+function describeCount(n: number): string {
+  if (n === 1) return 'one opening';
+  if (n === 2) return 'a couple of openings';
+  if (n <= 4) return 'a few openings';
+  if (n <= 8) return 'several openings';
+  return 'quite a few openings';
+}
+
+/**
+ * Join a list of names with natural grammar (Oxford comma)
+ */
+function joinNames(names: string[]): string {
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+/**
  * Format duration for TTS
  */
 function formatDuration(minutes: number): string {
@@ -92,6 +112,83 @@ function formatDuration(minutes: number): string {
     return `${hours} hour${hours > 1 ? 's' : ''}`;
   }
   return `${minutes} minutes`;
+}
+
+/**
+ * Build a natural, conversational availability summary for the voice agent.
+ *
+ * Covers 8 distinct result shapes so the output always sounds human.
+ */
+function buildAvailabilitySummary(
+  totalSlots: number,
+  slotsByDate: Record<string, { time: string; staff: string[] }[]>,
+  allStaffNames: string[],
+  serviceName: string,
+  humanReadableDateRange: string,
+): string {
+  const allDates = Object.keys(slotsByDate);
+  const dateCount = allDates.length;
+
+  // Case 1 — No results
+  if (totalSlots === 0) {
+    return `I don't have any openings for ${serviceName} ${humanReadableDateRange}. Would you like me to check a different day?`;
+  }
+
+  const firstDate = allDates[0];
+  const firstSlots = slotsByDate[firstDate];
+  const staffCount = allStaffNames.length;
+
+  if (dateCount === 1) {
+    if (staffCount === 1) {
+      const staff = allStaffNames[0];
+
+      if (firstSlots.length === 1) {
+        // Case 2 — Single date, single staff, 1 slot
+        return `${staff} has one opening on ${firstDate} at ${firstSlots[0].time}. Would that work for you?`;
+      }
+
+      if (firstSlots.length <= 3) {
+        // Case 3 — Single date, single staff, 2-3 slots
+        const times = joinNames(firstSlots.map(s => s.time));
+        return `${staff} has ${describeCount(firstSlots.length)} on ${firstDate} — ${times}. What time works best?`;
+      }
+
+      // Case 4 — Single date, single staff, 4+ slots
+      return `${staff} has ${describeCount(firstSlots.length)} on ${firstDate}, starting at ${firstSlots[0].time}. What time works best for you?`;
+    }
+
+    // Multiple staff on a single date
+    const staffList = staffCount === 2
+      ? `both ${allStaffNames[0]} and ${allStaffNames[1]}`
+      : joinNames(allStaffNames);
+
+    if (firstSlots.length <= 3) {
+      // Case 5 — Single date, multiple staff, few total slots (1-3)
+      const slotDescriptions = firstSlots.map(s =>
+        `${joinNames(s.staff)} at ${s.time}`
+      );
+      const prompt = firstSlots.length === 2
+        ? 'Would either of those work?'
+        : 'Would any of those work?';
+      return `I have ${describeCount(firstSlots.length)} on ${firstDate} — ${joinNames(slotDescriptions)}. ${prompt}`;
+    }
+
+    // Case 6 — Single date, multiple staff, many total slots (4+)
+    const firstSlot = firstSlots[0];
+    return `I have ${describeCount(firstSlots.length)} on ${firstDate} with ${staffList}. The earliest is ${firstSlot.time} with ${joinNames(firstSlot.staff)}. What time works best?`;
+  }
+
+  // Multiple dates
+  const firstSlot = firstSlots[0];
+  const withStaff = `with ${joinNames(firstSlot.staff)}`;
+
+  if (dateCount === 2) {
+    // Case 7 — Two dates
+    return `I have openings on both ${allDates[0]} and ${allDates[1]}. The earliest is ${firstSlot.time} on ${firstDate} ${withStaff}. Which day works better?`;
+  }
+
+  // Case 8 — Three or more dates
+  return `I have openings across ${dateCount} days, starting ${firstDate}. The earliest is ${firstSlot.time} ${withStaff}. Which day works best for you?`;
 }
 
 // ============================================================================
@@ -374,40 +471,15 @@ app.post('/availability', async (c) => {
       slotsShown += cappedAvailability[date].length;
     }
 
-    // 10. Generate staff-aware summary
+    // 10. Generate conversational summary
     const serviceName = getServiceDisplayName(service);
-    const dateCount = allDates.length;
-    let summary: string;
-
-    if (totalSlots === 0) {
-      summary = `I don't see any openings for ${serviceName} ${dateRange.humanReadable}. Would you like me to check a different time?`;
-    } else {
-      const firstDate = allDates[0];
-      const firstSlots = slotsByDate[firstDate];
-      const uniqueStaff = [...allStaffNames];
-
-      if (dateCount === 1 && uniqueStaff.length === 1) {
-        // Single date, single staff member
-        const times = firstSlots.slice(0, 3).map(s => s.time).join(', ');
-        const more = firstSlots.length > 3 ? ` and ${firstSlots.length - 3} more` : '';
-        summary = `I found ${firstSlots.length} opening${firstSlots.length > 1 ? 's' : ''} with ${uniqueStaff[0]} on ${firstDate}: ${times}${more}.`;
-      } else if (dateCount === 1) {
-        // Single date, multiple staff
-        const firstSlot = firstSlots[0];
-        const staffList = firstSlot.staff.join(' and ');
-        summary = `I found ${firstSlots.length} opening${firstSlots.length > 1 ? 's' : ''} on ${firstDate}. `;
-        summary += `At ${firstSlot.time}, ${staffList} ${firstSlot.staff.length > 1 ? 'are' : 'is'} available.`;
-        if (firstSlots.length > 1) {
-          const secondSlot = firstSlots[1];
-          summary += ` At ${secondSlot.time}, ${secondSlot.staff.join(' and ')}.`;
-        }
-      } else {
-        // Multiple dates
-        summary = `I found ${totalSlots} openings across ${dateCount} days. `;
-        const firstSlot = firstSlots[0];
-        summary += `The earliest is ${firstDate} at ${firstSlot.time} with ${firstSlot.staff.join(' and ')}.`;
-      }
-    }
+    const summary = buildAvailabilitySummary(
+      totalSlots,
+      slotsByDate,
+      [...allStaffNames],
+      serviceName,
+      dateRange.humanReadable,
+    );
 
     return c.json(successResponse({
       all_staff: [...allStaffNames],
