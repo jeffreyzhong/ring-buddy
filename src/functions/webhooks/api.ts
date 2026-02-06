@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { verifyWebhook } from '@clerk/backend/webhooks';
 import { prisma } from '../../lib/prisma';
 import { errorResponse, successResponse } from '../../types';
+import { getSquareClientForMerchant } from '../../lib/merchant';
 
 const app = new Hono();
 
@@ -583,6 +584,65 @@ function normalizePhoneNumber(phone: string): string {
 }
 
 /**
+ * Fetch the merchant's business name from their Square profile.
+ * Falls back to a generic label if the lookup fails.
+ */
+async function getBusinessName(merchantId: string): Promise<string> {
+  try {
+    const squareClient = await getSquareClientForMerchant(merchantId);
+    const response = await squareClient.merchants.get({ merchantId: 'me' });
+    const merchant = response.merchant as unknown as Record<string, unknown>;
+    return (merchant?.businessName as string) || 'our office';
+  } catch (error) {
+    console.warn('Business name lookup failed (non-blocking):', error);
+    return 'our office';
+  }
+}
+
+/**
+ * Look up a caller in Square's customer directory by phone number.
+ * Returns customer info if found, or null if not.
+ * Fails silently — a lookup failure should never block a call from connecting.
+ */
+async function lookupCallerByPhone(
+  merchantId: string,
+  callerPhone: string,
+): Promise<{ customer_id: string; customer_name: string; first_name: string } | null> {
+  try {
+    const squareClient = await getSquareClientForMerchant(merchantId);
+    const formattedPhone = normalizePhoneNumber(callerPhone);
+
+    const response = await squareClient.customers.search({
+      query: {
+        filter: {
+          phoneNumber: {
+            exact: formattedPhone,
+          },
+        },
+      },
+      limit: BigInt(1),
+    });
+
+    const customers = response.customers || [];
+    if (customers.length === 0) return null;
+
+    const customer = customers[0] as unknown as Record<string, unknown>;
+    const givenName = customer.givenName as string | undefined;
+    const familyName = customer.familyName as string | undefined;
+    const name = [givenName, familyName].filter(Boolean).join(' ') || '';
+
+    return {
+      customer_id: customer.id as string,
+      customer_name: name,
+      first_name: givenName || name,
+    };
+  } catch (error) {
+    console.warn('Caller lookup failed (non-blocking):', error);
+    return null;
+  }
+}
+
+/**
  * ElevenLabs conversation initiation webhook
  * 
  * Called by ElevenLabs when an inbound Twilio call is received.
@@ -659,12 +719,32 @@ app.post('/elevenlabs-init', async (c) => {
       const fallbackMerchantId = process.env.DEFAULT_MERCHANT_ID;
       if (fallbackMerchantId) {
         console.log('Using fallback merchant_id for testing:', fallbackMerchantId);
+        const fallbackCallerPhone = caller_id || '';
+        const fallbackBusinessName = await getBusinessName(fallbackMerchantId);
+        let fallbackCustomerVars: Record<string, string> = {
+          customer_known: 'false',
+          customer_greeting: `Hi there, thanks for calling ${fallbackBusinessName}. How can I help you?`,
+        };
+
+        if (fallbackCallerPhone) {
+          const customer = await lookupCallerByPhone(fallbackMerchantId, fallbackCallerPhone);
+          if (customer) {
+            fallbackCustomerVars = {
+              customer_known: 'true',
+              customer_id: customer.customer_id,
+              customer_name: customer.customer_name,
+              customer_greeting: `Hi ${customer.first_name}, welcome back to ${fallbackBusinessName}. How can I help you?`,
+            };
+          }
+        }
+
         return c.json({
           type: 'conversation_initiation_client_data',
           dynamic_variables: {
             'secret__merchant_id': fallbackMerchantId,
-            caller_phone: caller_id || '',
+            caller_phone: fallbackCallerPhone,
             location_timezone: 'America/Los_Angeles',
+            ...fallbackCustomerVars,
           },
         }, 200);
       }
@@ -696,6 +776,27 @@ app.post('/elevenlabs-init', async (c) => {
       location_timezone: phoneConfig.location?.timezone,
     });
     
+    // Look up caller and business name from Square
+    const callerPhone = caller_id || '';
+    const businessName = await getBusinessName(merchant.merchant_id);
+    let customerVars: Record<string, string> = {
+      customer_known: 'false',
+      customer_greeting: `Hi there, thanks for calling ${businessName}. How can I help you?`,
+    };
+
+    if (callerPhone) {
+      const customer = await lookupCallerByPhone(merchant.merchant_id, callerPhone);
+      if (customer) {
+        customerVars = {
+          customer_known: 'true',
+          customer_id: customer.customer_id,
+          customer_name: customer.customer_name,
+          customer_greeting: `Hi ${customer.first_name}, welcome back to ${businessName}. How can I help you?`,
+        };
+        console.log('Identified caller as existing customer:', customer.customer_name);
+      }
+    }
+
     // Return the dynamic variables for the conversation
     return c.json({
       type: 'conversation_initiation_client_data',
@@ -703,8 +804,9 @@ app.post('/elevenlabs-init', async (c) => {
         // Secret variable - only used in tool headers, not visible to LLM
         'secret__merchant_id': merchant.merchant_id,
         // Regular variables - can be used in prompts
-        caller_phone: caller_id || '',
+        caller_phone: callerPhone,
         location_timezone: phoneConfig.location?.timezone || 'America/Los_Angeles',
+        ...customerVars,
       },
     }, 200);
     
