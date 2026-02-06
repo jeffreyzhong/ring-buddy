@@ -354,14 +354,18 @@ app.post('/availability', async (c) => {
     }
     const service = serviceResult.match!;
 
-    // 3. Resolve staff (optional)
-    let staffMemberIds: string[] | undefined;
+    // 3. Resolve staff
+    // We always need to pass team member IDs to the segment filter so Square
+    // returns availability for ALL staff members, not just one per time slot.
+    let staffMemberIds: string[];
+    const allStaffForFilter = await listStaff(squareClient, locationId);
+
     if (args.staff_name && args.staff_name.toLowerCase() !== 'anyone' && args.staff_name.toLowerCase() !== 'any') {
+      // Specific staff requested — filter to just that person
       const staffResult = await resolveStaffName(squareClient, args.staff_name, locationId);
       if (staffResult.confidence === 'none') {
-        const staff = await listStaff(squareClient, locationId);
         return c.json(errorResponse(
-          `I couldn't find a staff member named "${args.staff_name}". Available staff: ${staff.map(s => s.name).join(', ')}.`
+          `I couldn't find a staff member named "${args.staff_name}". Available staff: ${allStaffForFilter.map(s => s.name).join(', ')}.`
         ), 404);
       }
       if (staffResult.confidence === 'ambiguous') {
@@ -370,6 +374,11 @@ app.post('/availability', async (c) => {
         ), 400);
       }
       staffMemberIds = [staffResult.match!.team_member_id];
+    } else {
+      // No preference or "anyone" — include ALL bookable staff so Square
+      // returns separate availability objects for each, allowing us to show
+      // which staff members are available at each time slot.
+      staffMemberIds = allStaffForFilter.map(s => s.team_member_id);
     }
 
     // 4. Parse date preference
@@ -378,13 +387,11 @@ app.post('/availability', async (c) => {
       timezone: location.timezone,
     });
 
-    // 5. Build segment filter
+    // 5. Build segment filter — always include team member IDs
     const segmentFilter: SegmentFilter = {
       serviceVariationId: service.variation_id,
+      teamMemberIdFilter: { any: staffMemberIds },
     };
-    if (staffMemberIds && staffMemberIds.length > 0) {
-      segmentFilter.teamMemberIdFilter = { any: staffMemberIds };
-    }
 
     // 6. Search availability
     const response = await squareClient.bookings.searchAvailability({
@@ -402,10 +409,9 @@ app.post('/availability', async (c) => {
 
     const availabilities = response.availabilities || [];
 
-    // 7. Build staff ID → name map from bookable staff at this location
-    const allStaff = await listStaff(squareClient, locationId);
+    // 7. Build staff ID → name map (reuse staff already fetched in step 3)
     const staffIdToName: Record<string, string> = {};
-    for (const s of allStaff) {
+    for (const s of allStaffForFilter) {
       staffIdToName[s.team_member_id] = s.name;
     }
 
