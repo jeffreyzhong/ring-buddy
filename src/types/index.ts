@@ -4,7 +4,7 @@
 export interface WebhookResponse<T = unknown> {
   success: boolean;
   data?: T;
-  error?: string;
+  message?: string;
 }
 
 /**
@@ -34,10 +34,10 @@ export function successResponse<T>(data: T): WebhookResponse<T> {
 /**
  * Helper to create an error response
  */
-export function errorResponse(error: string): WebhookResponse {
+export function errorResponse(message: string): WebhookResponse {
   return {
     success: false,
-    error,
+    message,
   };
 }
 

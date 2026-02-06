@@ -145,7 +145,7 @@ describe("Health Check & Root", () => {
     const { status, data } = await api<{ error: string }>("/nonexistent");
 
     expect(status).toBe(404);
-    expect(data.error).toBe("Not found");
+    expect(data.message).toBe("Not found");
   });
 });
 
@@ -217,7 +217,7 @@ describe("Example Endpoint", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("message");
+    expect(data.message).toContain("message");
   });
 });
 
@@ -303,7 +303,7 @@ describe("Locations Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("location_id");
+    expect(data.message).toContain("location_id");
   });
 });
 
@@ -384,7 +384,7 @@ describe("Services Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("service_id");
+    expect(data.message).toContain("service_id");
   });
 });
 
@@ -487,7 +487,7 @@ describe("Staff Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("team_member_id");
+    expect(data.message).toContain("team_member_id");
   });
 });
 
@@ -523,7 +523,7 @@ describe("Customers Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("phone_number");
+    expect(data.message).toContain("phone_number");
   });
 
   test("POST /customers/lookup with unknown phone returns not found", async () => {
@@ -556,7 +556,7 @@ describe("Customers Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("At least one search parameter");
+    expect(data.message).toContain("At least one search parameter");
   });
 
   test("POST /customers/search by phone", async () => {
@@ -624,7 +624,7 @@ describe("Customers Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("At least one of");
+    expect(data.message).toContain("At least one of");
   });
 
   test("POST /customers/create creates new customer", async () => {
@@ -709,7 +709,7 @@ describe("Customers Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("customer_id");
+    expect(data.message).toContain("customer_id");
   });
 
   test("POST /customers/bookings returns customer bookings", async () => {
@@ -768,7 +768,7 @@ describe("Availability Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("location_id");
+    expect(data.message).toContain("location_id");
   });
 
   test("POST /availability/search without service_variation_id returns 400", async () => {
@@ -785,7 +785,7 @@ describe("Availability Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("service_variation_id");
+    expect(data.message).toContain("service_variation_id");
   });
 
   test("POST /availability/search without start_date returns 400", async () => {
@@ -802,7 +802,7 @@ describe("Availability Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("start_date");
+    expect(data.message).toContain("start_date");
   });
 
   test("POST /availability/search without end_date returns 400", async () => {
@@ -819,7 +819,7 @@ describe("Availability Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("end_date");
+    expect(data.message).toContain("end_date");
   });
 
   test("POST /availability/search returns available slots", async () => {
@@ -994,7 +994,7 @@ describe("Bookings Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("location_id");
+    expect(data.message).toContain("location_id");
   });
 
   test("POST /bookings/create without service_variation_id returns 400", async () => {
@@ -1010,7 +1010,7 @@ describe("Bookings Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("service_variation_id");
+    expect(data.message).toContain("service_variation_id");
   });
 
   test("POST /bookings/create without start_at returns 400", async () => {
@@ -1026,7 +1026,7 @@ describe("Bookings Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("start_at");
+    expect(data.message).toContain("start_at");
   });
 
   test("POST /bookings/get without booking_id returns 400", async () => {
@@ -1039,7 +1039,7 @@ describe("Bookings Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("booking_id");
+    expect(data.message).toContain("booking_id");
   });
 
   test("POST /bookings/update without booking_id returns 400", async () => {
@@ -1052,7 +1052,7 @@ describe("Bookings Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("booking_id");
+    expect(data.message).toContain("booking_id");
   });
 
   test("POST /bookings/update without booking_version returns 400", async () => {
@@ -1065,7 +1065,7 @@ describe("Bookings Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("booking_version");
+    expect(data.message).toContain("booking_version");
   });
 
   test("POST /bookings/cancel without booking_id returns 400", async () => {
@@ -1078,7 +1078,7 @@ describe("Bookings Endpoints", () => {
 
     expect(status).toBe(400);
     expect(data.success).toBe(false);
-    expect(data.error).toContain("booking_id");
+    expect(data.message).toContain("booking_id");
   });
 });
 
