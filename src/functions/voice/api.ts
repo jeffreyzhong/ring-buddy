@@ -302,25 +302,50 @@ app.post('/availability', async (c) => {
       const args = getRequestArgs<VoiceAvailabilityArgs>(c);
       const serviceName = args.service_name || 'Requested service';
       const datePreference = args.date_preference || 'your requested date';
+      const staffName = args.staff_name || 'Any available staff';
+      const tz = 'America/Los_Angeles';
 
       // Parse the natural language date into a human-readable formatted date
-      const dateRange = parseNaturalDateTime(datePreference, {
-        timezone: 'America/Los_Angeles',
-      });
+      const dateRange = parseNaturalDateTime(datePreference, { timezone: tz });
       const formattedDate = dateRange.humanReadable;
 
+      // Build time slots based on whether a specific time was requested
+      let slots: { time: string; staff: string[] }[];
+
+      if (!dateRange.isRange && dateRange.startAt) {
+        // Specific time requested (e.g., "tomorrow at 2pm") — return that exact time
+        const requestedTime = new Date(dateRange.startAt).toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: tz,
+        });
+        slots = [{ time: requestedTime, staff: [staffName] }];
+      } else {
+        // No specific time — return a few mid-day slots
+        slots = [
+          { time: '10:00 AM', staff: [staffName] },
+          { time: '11:00 AM', staff: [staffName] },
+          { time: '1:00 PM', staff: [staffName] },
+          { time: '2:00 PM', staff: [staffName] },
+          { time: '3:00 PM', staff: [staffName] },
+        ];
+      }
+
+      const timeList = slots.map(s => s.time).join(', ');
+      const summary = slots.length === 1
+        ? `Yes, ${staffName} is available for ${serviceName} on ${formattedDate} at ${slots[0].time}. Would you like to go ahead and book it?`
+        : `Yes, ${staffName} has availability for ${serviceName} on ${formattedDate}. Available times include ${timeList}. Which time works best for you?`;
+
       return c.json(successResponse({
-        all_staff: ['Any available staff'],
+        all_staff: [staffName],
         availability: {
-          [formattedDate]: [
-            { time: 'Any time', staff: ['Any available staff'] },
-          ],
+          [formattedDate]: slots,
         },
         service_name: serviceName,
         location_name: 'Halo Spa',
-        total_slots: 1,
-        slots_shown: 1,
-        summary: `Yes, we have availability for ${serviceName} on ${formattedDate}. Would you like to go ahead and book it?`,
+        total_slots: slots.length,
+        slots_shown: slots.length,
+        summary,
       }));
     }
 
