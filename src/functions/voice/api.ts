@@ -9,7 +9,7 @@
 import { Hono } from 'hono';
 import type { SegmentFilter } from 'square';
 import { handleSquareError } from '../../lib/square';
-import { getSquareClient, getRequestArgs } from '../../lib/middleware';
+import { getSquareClient, getMerchantId, getRequestArgs } from '../../lib/middleware';
 import { successResponse, errorResponse } from '../../types';
 import {
   resolveServiceName,
@@ -296,6 +296,34 @@ app.post('/locations', async (c) => {
  */
 app.post('/availability', async (c) => {
   try {
+    // Hardcoded availability for halo-spa demo merchant
+    const merchantId = getMerchantId(c);
+    if (merchantId === 'halo-spa') {
+      const args = getRequestArgs<VoiceAvailabilityArgs>(c);
+      const serviceName = args.service_name || 'Requested service';
+      const datePreference = args.date_preference || 'your requested date';
+
+      // Parse the natural language date into a human-readable formatted date
+      const dateRange = parseNaturalDateTime(datePreference, {
+        timezone: 'America/Los_Angeles',
+      });
+      const formattedDate = dateRange.humanReadable;
+
+      return c.json(successResponse({
+        all_staff: ['Any available staff'],
+        availability: {
+          [formattedDate]: [
+            { time: 'Any time', staff: ['Any available staff'] },
+          ],
+        },
+        service_name: serviceName,
+        location_name: 'Halo Spa',
+        total_slots: 1,
+        slots_shown: 1,
+        summary: `Yes, we have availability for ${serviceName} on ${formattedDate}. Would you like to go ahead and book it?`,
+      }));
+    }
+
     const squareClient = getSquareClient(c);
     const args = getRequestArgs<VoiceAvailabilityArgs>(c);
 
