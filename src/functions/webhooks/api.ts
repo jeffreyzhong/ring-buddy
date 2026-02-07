@@ -689,6 +689,18 @@ app.post('/elevenlabs-init', async (c) => {
       console.log('ElevenLabs init response:', response);
       return c.json(response, 200);
     }
+
+    // Hardcoded halo-spa demo agent
+    if (normalizePhoneNumber(called_number) === '+19492985110') {
+      const haloSpaResponse = {
+        type: 'conversation_initiation_client_data',
+        dynamic_variables: {
+          'secret__merchant_id': 'halo-spa',
+        },
+      };
+      console.log('ElevenLabs init response (halo-spa):', haloSpaResponse);
+      return c.json(haloSpaResponse, 200);
+    }
     
     // Normalize the phone number for lookup
     const normalizedPhone = normalizePhoneNumber(called_number);
